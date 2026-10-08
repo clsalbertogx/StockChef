@@ -118,3 +118,39 @@ def test_header_tenant_mismatch_403(client: TestClient) -> None:
     )
     assert resp.status_code == 403
     assert resp.json()["code"] == "tenant_mismatch"
+
+
+def test_register_duplicate_email_409(client: TestClient) -> None:
+    _register(client, "em-1", "dup@x.com")
+    resp = client.post("/api/v1/auth/register", json={
+        "tenant_name": "Outro", "tenant_slug": "em-2",
+        "email": "dup@x.com", "password": "senha-segura", "name": "XX",
+    })
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "email_taken"
+
+
+def test_login_inactive_user_rejected(client: TestClient) -> None:
+    _register(client, "inativo", "inativo@x.com")
+    session = SessionLocal()
+    try:
+        session.execute(
+            sa_text("UPDATE users SET status = 'disabled' WHERE email = :e"),
+            {"e": "inativo@x.com"},
+        )
+        session.commit()
+    finally:
+        session.close()
+    resp = client.post("/api/v1/auth/login", json={
+        "tenant_slug": "inativo", "email": "inativo@x.com", "password": "senha-segura",
+    })
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "invalid_credentials"
+
+
+def test_login_password_over_72_chars_422(client: TestClient) -> None:
+    resp = client.post("/api/v1/auth/login", json={
+        "tenant_slug": "x", "email": "a@b.com", "password": "p" * 73,
+    })
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "validation_error"

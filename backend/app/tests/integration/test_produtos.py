@@ -68,3 +68,84 @@ def test_ficha_unknown_ingredient_404() -> None:
     )
     assert resp.status_code == 404
     assert resp.json()["code"] == "not_found"
+
+
+def test_create_product_duplicate_name_409() -> None:
+    h = _setup("dup-prod")
+    client.post("/api/v1/produtos", headers=h, json={"name": "X", "price": "10"})
+    resp = client.post("/api/v1/produtos", headers=h, json={"name": "X", "price": "12"})
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "product_exists"
+
+
+def test_create_product_foreign_store_404() -> None:
+    from sqlalchemy import text
+
+    from app.core.db import SessionLocal, set_tenant
+
+    from app.modules.identity.models import Tenant
+
+    h_a = _setup("prod-a")
+    _setup("prod-b")
+
+    def _tid(slug: str) -> str:
+        s = SessionLocal()
+        try:
+            return str(s.scalar(
+                text("SELECT id FROM tenants WHERE slug = :s"), {"s": slug}
+            ))
+        finally:
+            s.close()
+
+    db = SessionLocal()
+    try:
+        set_tenant(db, _tid("prod-b"))
+        store_b = db.execute(text("SELECT id FROM stores")).scalar()
+    finally:
+        db.close()
+    resp = client.post(
+        "/api/v1/produtos", headers=h_a,
+        json={"name": "Vazado", "price": "10", "store_id": str(store_b)},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "store_not_found"
+
+
+def test_get_product_by_id_200_and_404() -> None:
+    import uuid
+
+    h = _setup("get-prod")
+    pid = client.post("/api/v1/produtos", headers=h, json={"name": "Z", "price": "9"}).json()["id"]
+    resp = client.get(f"/api/v1/produtos/{pid}", headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Z"
+    missing = client.get(f"/api/v1/produtos/{uuid.uuid4()}", headers=h)
+    assert missing.status_code == 404
+
+
+def test_margem_endpoint() -> None:
+    h = _setup("margem")
+    queijo = _insumo(h, "Queijo", "45.00", "kg")
+    pid = client.post(
+        "/api/v1/produtos", headers=h, json={"name": "M", "price": "20.00"}
+    ).json()["id"]
+    client.post(
+        f"/api/v1/produtos/{pid}/ficha-tecnica", headers=h,
+        json={"items": [{"ingredient_id": queijo, "quantity": "0.030"}]},
+    )
+    resp = client.get(f"/api/v1/produtos/{pid}/margem", headers=h)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cost"] == "1.35"
+    assert body["margin_value"] == "18.65"
+    assert body["margin_percent"] == "93.25"
+
+
+def test_ficha_empty_items_422() -> None:
+    h = _setup("vazia")
+    pid = client.post("/api/v1/produtos", headers=h, json={"name": "V", "price": "10"}).json()["id"]
+    resp = client.post(
+        f"/api/v1/produtos/{pid}/ficha-tecnica", headers=h, json={"items": []}
+    )
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "validation_error"

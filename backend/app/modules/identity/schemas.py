@@ -16,7 +16,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     tenant_slug: str
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=72)
 
 
 class UserOut(BaseModel):

@@ -22,12 +22,21 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+let refreshP: Promise<boolean> | null = null;
+
 async function refreshSession(): Promise<boolean> {
-  const res = await fetch("/api/v1/auth/refresh", { method: "POST", credentials: "include" });
-  if (!res.ok) return false;
-  const body = await res.json();
-  setToken(body.access_token);
-  return true;
+  if (!refreshP) {
+    refreshP = (async () => {
+      const res = await fetch("/api/v1/auth/refresh", { method: "POST", credentials: "include" });
+      if (!res.ok) return false;
+      const body = await res.json();
+      setToken(body.access_token);
+      return true;
+    })().finally(() => {
+      refreshP = null;
+    });
+  }
+  return refreshP;
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import set_tenant
-from app.core.deps import current_actor, get_db
+from app.core.deps import current_actor, get_db, get_tenant_db
 from app.core.errors import DomainError
 from app.core.tenant import Actor
 from app.modules.catalog.models import Store, Unit
@@ -44,7 +44,7 @@ def _set_cookie(response: Response, token: str) -> None:
         key="refresh_token",
         value=token,
         httponly=True,
-        secure=False,  # dev; revisar em produção
+        secure=get_settings().cookie_secure,
         samesite="lax",
         max_age=60 * 60 * 24 * get_settings().refresh_token_ttl_days,
         path="/api/v1/auth",
@@ -121,6 +121,10 @@ def login(
         raise DomainError(
             "invalid_credentials", "Credenciais inválidas.", status.HTTP_401_UNAUTHORIZED
         )
+    if user.status != "active" or (tenant is not None and tenant.status != "active"):
+        raise DomainError(
+            "invalid_credentials", "Credenciais inválidas.", status.HTTP_401_UNAUTHORIZED
+        )
     user.last_login_at = datetime.now(UTC)
     return _issue_tokens(response, db, user)
 
@@ -171,11 +175,13 @@ def logout(
 
 @router.get("/me")
 def me(
-    actor: Actor = Depends(current_actor), db: Session = Depends(get_db)  # noqa: B008
+    actor: Actor = Depends(current_actor), db: Session = Depends(get_tenant_db)  # noqa: B008
 ) -> MeOut:
-    tenant = db.get(Tenant, actor.tenant_id)
     user = db.get(User, actor.id)
-    if tenant is None or user is None:
+    if user is None or user.tenant_id != actor.tenant_id:
+        raise DomainError("unauthorized", "Sessão inválida.", status.HTTP_401_UNAUTHORIZED)
+    tenant = db.get(Tenant, actor.tenant_id)
+    if tenant is None:
         raise DomainError("unauthorized", "Sessão inválida.", status.HTTP_401_UNAUTHORIZED)
     return MeOut(id=user.id, name=user.name, email=user.email, role=user.role,
                  tenant_id=tenant.id, tenant_name=tenant.name, tenant_slug=tenant.slug)

@@ -11,12 +11,29 @@ from alembic import context
 # Add app to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+import app.models  # noqa: F401  # registra ORM models no metadata
 from app.core.config import get_settings
 from app.core.db import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Tabelas do schema do backlog fora do escopo desta fatia (sem ORM).
+# `alembic revision --autogenerate` não deve propor DROP para elas.
+OUT_OF_SCOPE_TABLES = {
+    "plans", "subscriptions", "unit_conversions", "product_modifiers", "zones",
+    "drivers", "payments", "deliveries", "proof_of_deliveries", "purchase_orders",
+    "purchase_order_items", "goods_receipts", "goods_receipt_items", "losses",
+    "inventory_counts", "inventory_count_items", "forecasts", "agent_runs",
+    "recommendations", "audit_logs", "usage_metrics",
+}
+
+
+def include_object(object_, name, type_, reflected, compare_to) -> bool:
+    if type_ == "table" and reflected and name in OUT_OF_SCOPE_TABLES:
+        return False
+    return True
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -53,6 +70,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
+        compare_type=False,
     )
 
     with context.begin_transaction():
@@ -73,7 +92,10 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=include_object,
+            compare_type=False,
         )
 
         with context.begin_transaction():

@@ -23,7 +23,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!getToken()) return;
     api<SessionUser>("/auth/me")
       .then(setUser)
-      .catch(() => clearToken());
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) clearToken();
+      });
   }, []);
 
   const login = useCallback(async (tenantSlug: string, email: string, password: string) => {

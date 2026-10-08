@@ -67,9 +67,7 @@ def availability(
         )
 
 
-def availability_ok(
-    db: Session, tid: UUID, store_id: UUID, items: list[tuple[UUID, int]]
-) -> bool:
+def availability_ok(db: Session, store_id: UUID, items: list[tuple[UUID, int]]) -> bool:
     try:
         availability(db, store_id, items)
         return True

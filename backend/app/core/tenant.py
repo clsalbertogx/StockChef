@@ -7,6 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.modules.identity.security import decode_access_token
+
 
 class Actor(BaseModel):
     id: UUID
@@ -20,11 +22,7 @@ def install_tenant_middleware(app: FastAPI) -> None:
         header = request.headers.get("Authorization", "")
         if header.lower().startswith("bearer "):
             try:
-                payload = jwt.decode(
-                    header.split(" ", 1)[1],
-                    app.state.jwt_secret,
-                    algorithms=[app.state.jwt_algorithm],
-                )
+                payload = decode_access_token(header.split(" ", 1)[1])
                 request.state.actor = Actor(
                     id=UUID(payload["sub"]),
                     tenant_id=UUID(payload["tenant_id"]),

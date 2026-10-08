@@ -63,7 +63,7 @@ class RecipeItemIn(BaseModel):
 
 
 class RecipeSetIn(BaseModel):
-    items: list[RecipeItemIn]
+    items: list[RecipeItemIn] = Field(min_length=1)
 
 
 class RecipeItemOut(BaseModel):

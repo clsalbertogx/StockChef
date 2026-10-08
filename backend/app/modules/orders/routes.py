@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_tenant_db
 from app.core.errors import DomainError
-from app.modules.catalog.models import Product
+from app.modules.catalog.models import Product, Store
 from app.modules.catalog.service import default_store
 from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent
 from app.modules.orders.outbox import drain_outbox
@@ -25,10 +25,25 @@ def _tenant_id(db: Session) -> UUID:
     return db.info["tenant_id"]
 
 
+def _require_store(db: Session, tid: UUID, store_id: UUID) -> UUID:
+    store = db.get(Store, store_id)
+    if store is None or store.tenant_id != UUID(str(tid)):
+        raise DomainError("store_not_found", "Loja não encontrada.", status.HTTP_404_NOT_FOUND)
+    return store.id
+
+
 def _gen_code(db: Session, store_id: UUID) -> str:
     import secrets
 
-    return f"SC-{secrets.token_hex(4).upper()}"
+    for _ in range(5):
+        code = f"SC-{secrets.token_hex(6).upper()}"
+        if not db.scalar(select(Order).where(Order.code == code)):
+            return code
+    raise DomainError(
+        "code_conflict",
+        "Não foi possível gerar um código único.",
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
 
 
 def _upsert_customer(
@@ -55,7 +70,10 @@ def _to_out(db: Session, order: Order) -> OrderOut:
     out_items = []
     for it in items:
         product = db.get(Product, it.product_id)
-        assert product is not None  # FK de order_items garante existência
+        if product is None:  # FK RESTRICT impede deleção; defesa p/ robustez
+            raise DomainError(
+                "not_found", "Produto do pedido não encontrado.", status.HTTP_404_NOT_FOUND
+            )
         out_items.append(
             OrderItemOut(
                 product_id=it.product_id,
@@ -83,7 +101,11 @@ def _to_out(db: Session, order: Order) -> OrderOut:
 @router.post("/pedidos", status_code=status.HTTP_201_CREATED)
 def create_order(payload: OrderCreate, db: Session = Depends(get_tenant_db)) -> OrderOut:  # noqa: B008
     tid = _tenant_id(db)
-    store_id = payload.store_id or default_store(db, tid).id
+    store_id = (
+        _require_store(db, tid, payload.store_id)
+        if payload.store_id
+        else default_store(db, tid).id
+    )
     availability(
         db,
         store_id,
@@ -107,7 +129,10 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_tenant_db)) -> 
     subtotal = Decimal("0")
     for it in payload.items:
         product = db.get(Product, it.product_id)
-        assert product is not None
+        if product is None:
+            raise DomainError(
+                "not_found", "Produto não encontrado.", status.HTTP_404_NOT_FOUND
+            )
         unit_price = product.price
         total_price = unit_price * it.quantity
         subtotal += total_price
@@ -180,7 +205,6 @@ def confirm_order(
 
     ok = availability_ok(
         db,
-        tid,
         order.store_id,
         [(i.product_id, i.quantity) for i in _items_of(db, order.id)],
     )

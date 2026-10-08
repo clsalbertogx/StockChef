@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,11 @@ def _now() -> Any:
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "store_id", "code", name="orders_tenant_id_store_id_code_key"
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[UUID] = mapped_column(nullable=False)
@@ -35,6 +40,7 @@ class Order(Base):
     discount_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
     tax_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    expected_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     notes: Mapped[str | None] = mapped_column(String, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -50,7 +56,7 @@ class OrderItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     total_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    modifiers: Mapped[dict] = mapped_column(JSONB, default=dict)
+    modifiers: Mapped[list] = mapped_column(JSONB, default=list)
     notes: Mapped[str | None] = mapped_column(String, default=None)
     recipe_snapshot: Mapped[list[dict]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -95,5 +101,6 @@ class Customer(Base):
     name: Mapped[str | None] = mapped_column(String, default=None)
     phone: Mapped[str | None] = mapped_column(String, default=None)
     email: Mapped[str | None] = mapped_column(String, default=None)
+    address: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

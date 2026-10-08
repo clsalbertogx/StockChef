@@ -135,6 +135,10 @@ def test_insufficient_becomes_confirmed_pending_stock() -> None:
     assert _stock(queijo, slug) == "0.02"          # nada foi baixado
     assert len(_movements(queijo, slug)) == 0
 
+    timeline = client.get(f"/api/v1/pedidos/{order['id']}/eventos", headers=h).json()
+    shortage = next(e for e in timeline["events"] if e["event_type"] == "inventory.shortage")
+    assert shortage["from_status"] == "confirmed_pending_stock"  # estado real (não "confirmed")
+
 
 def test_outbox_reprocessed_is_noop() -> None:
     h, slug = _setup("reproc")
@@ -183,3 +187,76 @@ def test_events_expose_outbox_status() -> None:
     resp = client.get(f"/api/v1/pedidos/{order['id']}/eventos", headers=h)
     assert resp.status_code == 200
     assert any(e["outbox_status"] == "processed" for e in resp.json()["events"])
+
+
+def test_create_order_with_foreign_store_404() -> None:
+    h_a, _ = _setup("loja-est-1")
+    _setup("loja-est-2")
+    db2 = SessionLocal()
+    try:
+        set_tenant(db2, _tenant_id("loja-est-2"))
+        store_b = db2.execute(text("SELECT id FROM stores")).scalar()
+    finally:
+        db2.close()
+    queijo = _ingredient(h_a, "Queijo", "45.00", "1.00")
+    pid = _xburger(h_a, queijo)
+    resp = client.post(
+        "/api/v1/pedidos", headers=h_a,
+        json={"items": [{"product_id": pid, "quantity": 1}], "store_id": str(store_b)},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "store_not_found"
+
+
+def test_outbox_poisoned_event_does_not_abort_queue() -> None:
+    from uuid import UUID
+
+    from app.modules.orders.outbox import drain_outbox
+
+    h, slug = _setup("veneno")
+    queijo = _ingredient(h, "Queijo", "45.00", "1.00")
+    pid = _xburger(h, queijo)
+    order = client.post(
+        "/api/v1/pedidos", headers=h, json={"items": [{"product_id": pid, "quantity": 1}]}
+    ).json()
+    client.post(f"/api/v1/pedidos/{order['id']}/confirmar", headers=h)
+    tenant_id = _tenant_id(slug)
+
+    db = SessionLocal()
+    try:
+        set_tenant(db, tenant_id)
+        db.execute(
+            text("UPDATE outbox_events SET status = 'pending' "
+                 "WHERE payload->>'order_id' = :oid"),
+            {"oid": order["id"]},
+        )
+        db.execute(
+            text(
+                "INSERT INTO outbox_events (id, tenant_id, event_type, payload, idempotency_key, "
+                "status, attempts, created_at) "
+                "VALUES (gen_random_uuid(), :tid, 'order.confirmed', :payload, :key, "
+                "'pending', 0, now())"
+            ),
+            {"tid": tenant_id, "payload": "{}", "key": "poison"},
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    drain_outbox(UUID(tenant_id))
+
+    db = SessionLocal()
+    try:
+        set_tenant(db, tenant_id)
+        poison = db.execute(
+            text("SELECT status, attempts FROM outbox_events WHERE idempotency_key = 'poison'")
+        ).one()
+        good = db.execute(
+            text("SELECT status FROM outbox_events WHERE idempotency_key = :key"),
+            {"key": f"order.confirmed:{order['id']}"},
+        ).one()
+    finally:
+        db.close()
+    assert poison[0] == "failed"        # veneno isolado (loop não abortou)
+    assert poison[1] >= 1
+    assert good[0] == "processed"       # fila seguiu processando o resto

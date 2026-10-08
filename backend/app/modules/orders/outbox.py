@@ -27,7 +27,14 @@ def drain_outbox(tenant_id: UUID) -> None:
             )
             if event is None:
                 break
-            _process(db, tenant_id, event)
+            try:
+                # savepoint: um evento com falha não aborta a transação nem a fila.
+                with db.begin_nested():
+                    _process(db, tenant_id, event)
+            except Exception:
+                event.status = "failed"
+                event.attempts = (event.attempts or 0) + 1
+                event.last_error = "processing error"
             db.commit()
     finally:
         db.close()
@@ -66,7 +73,7 @@ def _process(db: Session, tenant_id: UUID, event: OutboxEvent) -> None:
         return
 
     rows: dict[UUID, StockLevel | None] = {}
-    for ingredient_id in remaining:
+    for ingredient_id in sorted(remaining):
         sl = db.scalar(
             select(StockLevel)
             .where(StockLevel.store_id == order.store_id, StockLevel.ingredient_id == ingredient_id)
@@ -75,18 +82,20 @@ def _process(db: Session, tenant_id: UUID, event: OutboxEvent) -> None:
         rows[ingredient_id] = sl
 
     if any(sl is None or sl.quantity < remaining[i] for i, sl in rows.items()):
+        prev = order.status
         order.status = "confirmed_pending_stock"
         db.add(OrderEvent(
             tenant_id=tenant_id, order_id=order.id, event_type="inventory.shortage",
-            from_status="confirmed", to_status="confirmed_pending_stock",
+            from_status=prev, to_status="confirmed_pending_stock",
             payload={"detail": "Estoque insuficiente no momento da baixa."},
         ))
         event.status = "failed"
         event.last_error = "insufficient stock"
         return
 
-    for ingredient_id, need in remaining.items():
+    for ingredient_id in sorted(remaining):
         sl = rows[ingredient_id]
+        need = remaining[ingredient_id]
         assert sl is not None
         db.execute(
             update(StockLevel)
