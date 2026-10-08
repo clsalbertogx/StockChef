@@ -39,6 +39,16 @@ class Unit(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class Category(Base):
+    __tablename__ = "categories"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(String)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class Supplier(Base):
     __tablename__ = "suppliers"
 
@@ -99,3 +109,49 @@ class StockMovement(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String, unique=True, default=None)
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(nullable=False)
+    store_id: Mapped[UUID] = mapped_column(ForeignKey("stores.id"), nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(ForeignKey("categories.id"), default=None)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String, default=None)
+    price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    active: Mapped[bool] = mapped_column(default=True)
+    stock_control_enabled: Mapped[bool] = mapped_column(default=True)
+    preparation_time_minutes: Mapped[int] = mapped_column(default=10)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Recipe(Base):
+    __tablename__ = "recipes"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(nullable=False)
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"), nullable=False)
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(String, default="draft")
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class RecipeItem(Base):
+    __tablename__ = "recipe_items"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(nullable=False)
+    recipe_id: Mapped[UUID] = mapped_column(ForeignKey("recipes.id"), nullable=False)
+    ingredient_id: Mapped[UUID] = mapped_column(ForeignKey("ingredients.id"), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    unit_id: Mapped[UUID] = mapped_column(ForeignKey("units.id"), nullable=False)
+    waste_factor: Mapped[Decimal] = mapped_column(Numeric(6, 4), default=Decimal("0"))
+    optional: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

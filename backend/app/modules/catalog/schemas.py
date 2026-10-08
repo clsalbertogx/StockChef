@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UnitOut(BaseModel):
@@ -36,3 +36,47 @@ class IngredientOut(BaseModel):
     minimum_stock: Decimal
     status: str
     stock_total: Decimal
+
+
+class ProductCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    price: Decimal = Field(ge=0)
+    store_id: UUID | None = None
+    description: str | None = None
+    preparation_time_minutes: int = Field(default=10, ge=0)
+
+
+class ProductOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None
+    price: Decimal
+    active: bool
+    preparation_time_minutes: int
+
+
+class RecipeItemIn(BaseModel):
+    ingredient_id: UUID
+    quantity: Decimal = Field(gt=0)
+
+
+class RecipeSetIn(BaseModel):
+    items: list[RecipeItemIn]
+
+
+class RecipeItemOut(BaseModel):
+    ingredient_id: UUID
+    name: str
+    unit_symbol: str
+    quantity: Decimal
+    cost: Decimal
+
+
+class RecipeOut(BaseModel):
+    product_id: UUID
+    status: str
+    version: int
+    items: list[RecipeItemOut]
+    total_cost: Decimal
