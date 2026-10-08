@@ -25,7 +25,7 @@ class Loss(Base):
     ingredient_id: Mapped[UUID] = mapped_column(ForeignKey("ingredients.id"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
     cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
-    reason: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str] = mapped_column(String, nullable=False, default="other")
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     registered_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
