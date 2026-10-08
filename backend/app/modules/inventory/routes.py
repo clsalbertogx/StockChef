@@ -13,8 +13,15 @@ from app.core.tenant import Actor
 from app.modules.catalog.models import Ingredient, StockLevel, StockMovement, Unit
 from app.modules.catalog.routes import _require_store, _tenant_id
 from app.modules.catalog.service import default_store, stock_totals
-from app.modules.inventory.models import Loss
-from app.modules.inventory.schemas import LossCreate, LossOut, MovementOut
+from app.modules.inventory.models import InventoryCount, InventoryCountItem, Loss, _now
+from app.modules.inventory.schemas import (
+    CountItemsIn,
+    InventoryCountItemOut,
+    InventoryCountOut,
+    LossCreate,
+    LossOut,
+    MovementOut,
+)
 from app.modules.inventory.service import apply_movement
 
 router = APIRouter(tags=["estoque"])
@@ -111,3 +118,138 @@ def list_movimentos(
     q = q.order_by(StockMovement.created_at.desc()).limit(min(limit, 200))
     rows = db.scalars(q).all()
     return [MovementOut.model_validate(m) for m in rows]
+
+
+@router.post("/inventarios", status_code=status.HTTP_201_CREATED)
+def open_inventory(
+    actor: Actor = Depends(require_roles("owner", "manager")),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> InventoryCountOut:
+    tid = _tenant_id(db)
+    store_id = default_store(db, tid).id
+    ings = db.scalars(
+        select(Ingredient).where(Ingredient.tenant_id == tid, Ingredient.status == "active")
+    ).all()
+    totals = stock_totals(db, [i.id for i in ings])
+    count = InventoryCount(tenant_id=tid, store_id=store_id, status="open", started_by=actor.id)
+    db.add(count)
+    db.flush()
+    for ing in ings:
+        db.add(InventoryCountItem(
+            tenant_id=tid,
+            inventory_count_id=count.id,
+            ingredient_id=ing.id,
+            system_quantity=totals.get(ing.id, Decimal("0")),
+        ))
+    db.commit()
+    return _count_out(db, count)
+
+
+@router.post("/inventarios/{count_id}/itens")
+def set_count_items(
+    count_id: UUID,
+    payload: CountItemsIn,
+    actor: Actor = Depends(require_roles("owner", "manager")),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> InventoryCountOut:
+    tid = _tenant_id(db)
+    count = db.get(InventoryCount, count_id)
+    if count is None or str(count.tenant_id) != str(tid):
+        raise DomainError("not_found", "Contagem não encontrada.", status.HTTP_404_NOT_FOUND)
+    if count.status != "open":
+        raise DomainError("invalid_state", "Contagem já finalizada.", status.HTTP_409_CONFLICT)
+    items = {i.ingredient_id: i for i in db.scalars(
+        select(InventoryCountItem).where(InventoryCountItem.inventory_count_id == count_id)
+    ).all()}
+    for it in payload.items:
+        row = items.get(it.ingredient_id)
+        if row is None:
+            row = InventoryCountItem(
+                tenant_id=tid,
+                inventory_count_id=count_id,
+                ingredient_id=it.ingredient_id,
+                system_quantity=Decimal("0"),
+            )
+            db.add(row)
+        row.counted_quantity = it.counted_quantity
+    db.commit()
+    return _count_out(db, count)
+
+
+@router.post("/inventarios/{count_id}/fechar")
+def close_inventory(
+    count_id: UUID,
+    actor: Actor = Depends(require_roles("owner", "manager")),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> InventoryCountOut:
+    tid = _tenant_id(db)
+    count = db.get(InventoryCount, count_id)
+    if count is None or str(count.tenant_id) != str(tid):
+        raise DomainError("not_found", "Contagem não encontrada.", status.HTTP_404_NOT_FOUND)
+    if count.status != "open":
+        raise DomainError("invalid_state", "Contagem já finalizada.", status.HTTP_409_CONFLICT)
+    items = db.scalars(select(InventoryCountItem).where(
+        InventoryCountItem.inventory_count_id == count_id
+    )).all()
+    for row in items:
+        if row.counted_quantity is None:
+            row.counted_quantity = row.system_quantity
+        row.difference = row.counted_quantity - row.system_quantity
+        if row.difference != 0:
+            sl = db.scalar(select(StockLevel).where(
+                StockLevel.store_id == count.store_id,
+                StockLevel.ingredient_id == row.ingredient_id,
+            ))
+            unit_cost = sl.average_cost if sl else Decimal("0")
+            apply_movement(
+                db,
+                tenant_id=tid,
+                store_id=count.store_id,
+                ingredient_id=row.ingredient_id,
+                type_="adjustment",
+                quantity=row.difference,
+                unit_cost=unit_cost,
+                reference_type="inventory_count",
+                reference_id=count.id,
+                reason="Ajuste de inventario",
+                user_id=actor.id,
+            )
+            row.adjusted = True
+    count.status = "closed"
+    count.closed_at = _now()
+    db.commit()
+    return _count_out(db, count)
+
+
+@router.get("/inventarios")
+def list_inventories(db: Session = Depends(get_tenant_db)) -> list[InventoryCountOut]:  # noqa: B008
+    tid = _tenant_id(db)
+    rows = db.scalars(select(InventoryCount).where(
+        InventoryCount.tenant_id == tid
+    ).order_by(InventoryCount.started_at.desc())).all()
+    return [_count_out(db, c) for c in rows]
+
+
+@router.get("/inventarios/{count_id}")
+def get_inventory(
+    count_id: UUID, db: Session = Depends(get_tenant_db)  # noqa: B008
+) -> InventoryCountOut:
+    tid = _tenant_id(db)
+    count = db.get(InventoryCount, count_id)
+    if count is None or str(count.tenant_id) != str(tid):
+        raise DomainError("not_found", "Contagem não encontrada.", status.HTTP_404_NOT_FOUND)
+    return _count_out(db, count)
+
+
+def _count_out(db: Session, count: InventoryCount) -> InventoryCountOut:
+    items = db.scalars(select(InventoryCountItem).where(
+        InventoryCountItem.inventory_count_id == count.id
+    )).all()
+    return InventoryCountOut(
+        id=count.id,
+        store_id=count.store_id,
+        status=count.status,
+        started_at=count.started_at,
+        closed_at=count.closed_at,
+        items=[InventoryCountItemOut.model_validate(it) for it in items],
+    )
