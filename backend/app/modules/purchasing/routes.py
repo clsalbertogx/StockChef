@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_tenant_db, require_roles
 from app.core.errors import DomainError
 from app.modules.catalog.models import Supplier
-from app.modules.purchasing.schemas import SupplierCreate, SupplierOut
+from app.modules.purchasing.schemas import SupplierCreate, SupplierOut, SupplierUpdate
 
 router = APIRouter(tags=["compras"])
 
@@ -61,3 +61,34 @@ def get_supplier(supplier_id: UUID, db: Session = Depends(get_tenant_db)) -> Sup
     if s is None or s.tenant_id != tid:
         raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
     return SupplierOut.model_validate(s)
+
+
+@router.patch("/fornecedores/{supplier_id}")
+def update_supplier(
+    supplier_id: UUID,
+    payload: SupplierUpdate,
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> SupplierOut:
+    tid = _tenant_id(db)
+    s = db.get(Supplier, supplier_id)
+    if s is None or s.tenant_id != tid:
+        raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(s, field, value)
+    db.commit()
+    db.refresh(s)
+    return SupplierOut.model_validate(s)
+
+
+@router.delete("/fornecedores/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_supplier(
+    supplier_id: UUID, db: Session = Depends(get_tenant_db)  # noqa: B008
+) -> None:
+    tid = _tenant_id(db)
+    s = db.get(Supplier, supplier_id)
+    if s is None or s.tenant_id != tid:
+        raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
+    db.delete(s)
+    db.commit()
