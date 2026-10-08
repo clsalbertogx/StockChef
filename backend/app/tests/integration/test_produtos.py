@@ -83,8 +83,6 @@ def test_create_product_foreign_store_404() -> None:
 
     from app.core.db import SessionLocal, set_tenant
 
-    from app.modules.identity.models import Tenant
-
     h_a = _setup("prod-a")
     _setup("prod-b")
 

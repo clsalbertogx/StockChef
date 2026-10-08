@@ -48,3 +48,4 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]
 addopts = "-q"
+anyio_mode = "auto"
