@@ -28,7 +28,7 @@ def load_active_recipe(db: Session, product_id: UUID) -> Recipe:
 
 
 def availability(
-    db: Session, tid: UUID, store_id: UUID, items: list[tuple[UUID, int]]
+    db: Session, store_id: UUID, items: list[tuple[UUID, int]]
 ) -> None:
     """Eleva 422 se algum insumo ficar aquém do exigido."""
     required: defaultdict[UUID, Decimal] = defaultdict(Decimal)
@@ -65,6 +65,18 @@ def availability(
             MISSING_HTTP,
             extra={"missing": missing},
         )
+
+
+def availability_ok(
+    db: Session, tid: UUID, store_id: UUID, items: list[tuple[UUID, int]]
+) -> bool:
+    try:
+        availability(db, store_id, items)
+        return True
+    except DomainError as exc:
+        if exc.code == "insufficient_stock":
+            return False
+        raise
 
 
 def recipe_snapshot(db: Session, product_id: UUID) -> list[dict]:

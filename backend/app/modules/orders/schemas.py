@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -18,8 +19,8 @@ class OrderCreate(BaseModel):
     customer_phone: str | None = None
     items: list[OrderItemRequest] = Field(min_length=1)
     notes: str | None = None
-    fulfillment_type: str = "delivery"
-    channel: str = "own_pwa"
+    fulfillment_type: Literal["delivery", "pickup", "table"] = "delivery"
+    channel: Literal["own_pwa", "whatsapp", "phone", "pos", "marketplace_future"] = "own_pwa"
 
 
 class OrderItemOut(BaseModel):
