@@ -9,6 +9,7 @@ from app.modules.catalog.routes import router as catalog_router
 from app.modules.identity.routes import router as auth_router
 from app.modules.inventory.routes import router as inventory_router
 from app.modules.orders.routes import router as orders_router
+from app.modules.purchasing.routes import router as purchasing_router
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog_router, prefix="/api/v1")
     app.include_router(inventory_router, prefix="/api/v1")
     app.include_router(orders_router, prefix="/api/v1")
+    app.include_router(purchasing_router, prefix="/api/v1")
     return app
 
 
