@@ -1,101 +1,19 @@
-from __future__ import annotations
-
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_tenant_db, require_roles
-from app.core.errors import DomainError
-from app.modules.catalog.models import Supplier
-from app.modules.purchasing.schemas import SupplierCreate, SupplierOut, SupplierUpdate
+from app.core.deps import current_actor, get_tenant_db
+from app.core.tenant import Actor
+from app.modules.catalog.service import default_store
+from app.modules.purchasing.service import purchase_suggestion
 
-router = APIRouter(tags=["compras"])
+router = APIRouter()
 
-
-def _tenant_id(db: Session) -> UUID:
-    return UUID(str(db.info["tenant_id"]))
-
-
-@router.post(
-    "/fornecedores",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles("owner", "manager"))],
-)
-def create_supplier(
-    payload: SupplierCreate,
+@router.get("/compras/sugestao")
+def compras_sugestao(
+    dias: int = 14,
     db: Session = Depends(get_tenant_db),  # noqa: B008
-) -> SupplierOut:
-    tid = _tenant_id(db)
-    supplier = Supplier(
-        tenant_id=tid,
-        name=payload.name,
-        document=payload.document,
-        contact_name=payload.contact_name,
-        email=payload.email,
-        phone=payload.phone,
-        lead_time_days=payload.lead_time_days,
-        minimum_order_value=payload.minimum_order_value,
-        status="active",
-    )
-    db.add(supplier)
-    db.commit()
-    db.refresh(supplier)
-    return SupplierOut.model_validate(supplier, from_attributes=True)
-
-
-@router.get("/fornecedores")
-def list_suppliers(db: Session = Depends(get_tenant_db)) -> list[SupplierOut]:  # noqa: B008
-    tid = _tenant_id(db)
-    rows = db.scalars(select(Supplier).where(
-        Supplier.tenant_id == tid
-    ).order_by(Supplier.name)).all()
-    return [SupplierOut.model_validate(s, from_attributes=True) for s in rows]
-
-
-@router.get("/fornecedores/{supplier_id}")
-def get_supplier(supplier_id: UUID, db: Session = Depends(get_tenant_db)) -> SupplierOut:  # noqa: B008
-    tid = _tenant_id(db)
-    s = db.get(Supplier, supplier_id)
-    if s is None or s.tenant_id != tid:
-        raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
-    return SupplierOut.model_validate(s, from_attributes=True)
-
-
-@router.patch(
-    "/fornecedores/{supplier_id}",
-    dependencies=[Depends(require_roles("owner", "manager"))],
-)
-def update_supplier(
-    supplier_id: UUID,
-    payload: SupplierUpdate,
-    db: Session = Depends(get_tenant_db),  # noqa: B008
-) -> SupplierOut:
-    tid = _tenant_id(db)
-    s = db.get(Supplier, supplier_id)
-    if s is None or s.tenant_id != tid:
-        raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
-
-    update_data = payload.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(s, field, value)
-    db.commit()
-    db.refresh(s)
-    return SupplierOut.model_validate(s, from_attributes=True)
-
-
-@router.delete(
-    "/fornecedores/{supplier_id}",
-    dependencies=[Depends(require_roles("owner", "manager"))],
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_supplier(
-    supplier_id: UUID, db: Session = Depends(get_tenant_db)  # noqa: B008
-) -> None:
-    tid = _tenant_id(db)
-    s = db.get(Supplier, supplier_id)
-    if s is None or s.tenant_id != tid:
-        raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
-    db.delete(s)
-    db.commit()
+    actor: Actor = Depends(current_actor),  # noqa: B008
+) -> list[dict]:
+    tid = actor.tenant_id
+    store_id = default_store(db, tid).id
+    return purchase_suggestion(db, tid, store_id, days=dias)
