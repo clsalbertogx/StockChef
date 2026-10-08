@@ -1,6 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import InsumosPage from "../pages/InsumosPage";
@@ -59,7 +59,12 @@ describe("InsumosPage", () => {
     await userEvent.type(input, "6.50");
     await userEvent.click(screen.getByRole("button", { name: /salvar/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/insumos/i1"), expect.objectContaining({ method: "PATCH" })));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/insumos/i1"),
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
     await waitFor(() => expect(screen.getByText(/R\$ 6\.50/)).toBeInTheDocument());
   });
 });
