@@ -30,7 +30,7 @@ from app.modules.orders.models import Order, OrderItem
 from app.modules.orders.outbox import drain_outbox
 from app.modules.orders.routes import confirm_order
 
-EMAIL = "dono@demo.local"
+EMAIL = "dono@demo.example"
 PASSWORD = "demo1234"
 SLUG = "demo"
 
