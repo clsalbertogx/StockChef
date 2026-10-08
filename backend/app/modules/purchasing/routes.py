@@ -63,7 +63,7 @@ def get_supplier(supplier_id: UUID, db: Session = Depends(get_tenant_db)) -> Sup
     return SupplierOut.model_validate(s)
 
 
-@router.patch("/fornecedores/{supplier_id}")
+@router.patch(dependencies=[Depends(require_roles("owner", "manager"))])("/fornecedores/{supplier_id}")
 def update_supplier(
     supplier_id: UUID,
     payload: SupplierUpdate,
@@ -82,7 +82,7 @@ def update_supplier(
     return SupplierOut.model_validate(s)
 
 
-@router.delete("/fornecedores/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(dependencies=[Depends(require_roles("owner", "manager"))])("/fornecedores/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_supplier(
     supplier_id: UUID, db: Session = Depends(get_tenant_db)  # noqa: B008
 ) -> None:
