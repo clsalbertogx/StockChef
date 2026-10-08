@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_tenant_db
 from app.core.errors import DomainError
-from app.modules.catalog.costing import ingredient_cost, recipe_cost
+from app.modules.catalog.costing import ingredient_cost, margin, recipe_cost
 from app.modules.catalog.models import Ingredient, Product, Recipe, RecipeItem, StockLevel, Unit
 from app.modules.catalog.schemas import (
     IngredientCreate,
@@ -245,3 +245,34 @@ def _build_recipe_out(db: Session, recipe: Recipe) -> RecipeOut:
         items=out_items,
         total_cost=recipe_cost(pairs),
     )
+
+
+@router.get("/produtos/{product_id}/margem")
+def get_margin(product_id: UUID, db: Session = Depends(get_tenant_db)) -> dict:  # noqa: B008
+    product = db.get(Product, product_id)
+    if product is None:
+        raise DomainError("not_found", "Produto não encontrado.", status.HTTP_404_NOT_FOUND)
+    recipe = db.scalar(
+        select(Recipe)
+        .where(Recipe.product_id == product_id, Recipe.status == "active")
+        .order_by(Recipe.version.desc())
+        .limit(1)
+    )
+    cost = Decimal("0.00")
+    if recipe is not None:
+        items = db.scalars(select(RecipeItem).where(RecipeItem.recipe_id == recipe.id)).all()
+        pairs: list[tuple[Decimal, Decimal]] = []
+        for it in items:
+            ing = db.get(Ingredient, it.ingredient_id)
+            assert ing is not None  # FK de recipe_items garante existência
+            pairs.append((it.quantity, ing.average_cost))
+        cost = recipe_cost(pairs)
+    value, percent = margin(product.price, cost)
+    return {
+        "product_id": str(product_id),
+        "name": product.name,
+        "price": str(product.price),
+        "cost": str(cost),
+        "margin_value": str(value),
+        "margin_percent": None if percent is None else str(percent),
+    }
