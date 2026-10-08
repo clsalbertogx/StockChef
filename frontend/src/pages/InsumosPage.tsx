@@ -33,6 +33,21 @@ export default function InsumosPage() {
       setStock("");
     },
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingCost, setEditingCost] = useState("");
+
+  const updateCost = useMutation({
+    mutationFn: ({ id, average_cost }: { id: string; average_cost: string }) =>
+      api<Insumo>(`/insumos/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ average_cost }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["insumos"] });
+      setEditingId(null);
+      setEditingCost("");
+    },
+  });
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-8">
@@ -101,6 +116,7 @@ export default function InsumosPage() {
             <th>Un.</th>
             <th>Custo</th>
             <th>Estoque</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -110,6 +126,55 @@ export default function InsumosPage() {
               <td>{i.base_unit.symbol}</td>
               <td>R$ {Number(i.average_cost).toFixed(2)}</td>
               <td>{Number(i.stock_total).toFixed(i.base_unit.symbol === "un" ? 0 : 3)}</td>
+              <td>
+                {editingId !== i.id ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(i.id);
+                      setEditingCost(i.average_cost);
+                    }}
+                    className="rounded border px-2 py-1 text-sm"
+                  >
+                    Editar custo
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      aria-label="Novo custo"
+                      value={editingCost}
+                      onChange={(e) => setEditingCost(e.target.value)}
+                      className="w-24 rounded border px-2 py-1 text-sm"
+                    />
+                    <button
+                      type="button"
+                      disabled={updateCost.isPending}
+                      onClick={() =>
+                        updateCost.mutate({
+                          id: i.id,
+                          average_cost: editingCost,
+                        })
+                      }
+                      className="rounded bg-green-600 px-2 py-1 text-sm text-white disabled:opacity-50"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(null);
+                        setEditingCost("");
+                      }}
+                      className="rounded border px-2 py-1 text-sm"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
