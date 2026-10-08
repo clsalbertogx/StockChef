@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
@@ -9,11 +10,11 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_tenant_db, require_roles
 from app.core.errors import DomainError
 from app.core.tenant import Actor
-from app.modules.catalog.models import Ingredient, StockLevel
+from app.modules.catalog.models import Ingredient, StockLevel, StockMovement, Unit
 from app.modules.catalog.routes import _require_store, _tenant_id
-from app.modules.catalog.service import default_store
+from app.modules.catalog.service import default_store, stock_totals
 from app.modules.inventory.models import Loss
-from app.modules.inventory.schemas import LossCreate, LossOut
+from app.modules.inventory.schemas import LossCreate, LossOut, MovementOut
 from app.modules.inventory.service import apply_movement
 
 router = APIRouter(tags=["estoque"])
@@ -68,3 +69,45 @@ def create_loss(
     db.add(loss)
     db.commit()
     return LossOut.model_validate(loss)
+
+
+@router.get("/estoque/critico")
+def estoque_critico(db: Session = Depends(get_tenant_db)) -> list[dict]:  # noqa: B008
+    tid = _tenant_id(db)
+    ings = db.scalars(
+        select(Ingredient).where(
+            Ingredient.tenant_id == tid, Ingredient.status == "active"
+        )
+    ).all()
+    totals = stock_totals(db, [i.id for i in ings])
+    units = {u.id: u.symbol for u in db.scalars(select(Unit).where(Unit.tenant_id == tid)).all()}
+    out = []
+    for ing in ings:
+        current = totals.get(ing.id, Decimal("0"))
+        if current < ing.minimum_stock:
+            out.append({
+                "ingredient_id": str(ing.id),
+                "name": ing.name,
+                "unit_symbol": units.get(ing.base_unit_id, ""),
+                "stock_total": str(current),
+                "minimum_stock": str(ing.minimum_stock),
+            })
+    return sorted(out, key=lambda c: Decimal(c["stock_total"]) - Decimal(c["minimum_stock"]))
+
+
+@router.get("/estoque/movimentos")
+def list_movimentos(
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+    ingredient_id: UUID | None = None,
+    tipo: str | None = None,
+    limit: int = 50,
+) -> list[MovementOut]:
+    tid = _tenant_id(db)
+    q = select(StockMovement).where(StockMovement.tenant_id == tid)
+    if ingredient_id is not None:
+        q = q.where(StockMovement.ingredient_id == ingredient_id)
+    if tipo is not None:
+        q = q.where(StockMovement.type == tipo)
+    q = q.order_by(StockMovement.created_at.desc()).limit(min(limit, 200))
+    rows = db.scalars(q).all()
+    return [MovementOut.model_validate(m) for m in rows]
