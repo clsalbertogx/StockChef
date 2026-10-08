@@ -42,7 +42,7 @@ def create_supplier(
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
-    return SupplierOut.model_validate(supplier)
+    return SupplierOut.model_validate(supplier, from_attributes=True)
 
 
 @router.get("/fornecedores")
@@ -51,7 +51,7 @@ def list_suppliers(db: Session = Depends(get_tenant_db)) -> list[SupplierOut]:  
     rows = db.scalars(select(Supplier).where(
         Supplier.tenant_id == tid
     ).order_by(Supplier.name)).all()
-    return [SupplierOut.model_validate(s) for s in rows]
+    return [SupplierOut.model_validate(s, from_attributes=True) for s in rows]
 
 
 @router.get("/fornecedores/{supplier_id}")
@@ -60,10 +60,13 @@ def get_supplier(supplier_id: UUID, db: Session = Depends(get_tenant_db)) -> Sup
     s = db.get(Supplier, supplier_id)
     if s is None or s.tenant_id != tid:
         raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
-    return SupplierOut.model_validate(s)
+    return SupplierOut.model_validate(s, from_attributes=True)
 
 
-@router.patch(dependencies=[Depends(require_roles("owner", "manager"))])("/fornecedores/{supplier_id}")
+@router.patch(
+    "/fornecedores/{supplier_id}",
+    dependencies=[Depends(require_roles("owner", "manager"))],
+)
 def update_supplier(
     supplier_id: UUID,
     payload: SupplierUpdate,
@@ -79,10 +82,14 @@ def update_supplier(
         setattr(s, field, value)
     db.commit()
     db.refresh(s)
-    return SupplierOut.model_validate(s)
+    return SupplierOut.model_validate(s, from_attributes=True)
 
 
-@router.delete(dependencies=[Depends(require_roles("owner", "manager"))])("/fornecedores/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/fornecedores/{supplier_id}",
+    dependencies=[Depends(require_roles("owner", "manager"))],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def delete_supplier(
     supplier_id: UUID, db: Session = Depends(get_tenant_db)  # noqa: B008
 ) -> None:

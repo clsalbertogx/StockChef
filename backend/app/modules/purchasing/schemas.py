@@ -24,7 +24,7 @@ class SupplierUpdate(BaseModel):
     phone: str | None = None
     lead_time_days: int | None = Field(None, ge=0)
     minimum_order_value: Decimal | None = Field(None, ge=0)
-    active: str | None = None
+    active: bool | None = None
 
 
 class SupplierOut(BaseModel):
@@ -32,7 +32,7 @@ class SupplierOut(BaseModel):
     id: UUID
     name: str
     lead_time_days: int
-    active: str
+    active: bool = True
 
 
 class PurchaseSuggestion(BaseModel):
