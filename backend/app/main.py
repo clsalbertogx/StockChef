@@ -6,6 +6,7 @@ from app.core.api import api_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.tenant import install_tenant_middleware
+from app.modules.catalog.routes import router as catalog_router
 from app.modules.identity.routes import router as auth_router
 
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(auth_router, prefix="/api/v1/auth")
+    app.include_router(catalog_router, prefix="/api/v1")
     return app
 
 
