@@ -15,7 +15,7 @@ Python 3.12 · Node 24 · Docker + Compose · `make`
 ## Início rápido
 
     make install          # .venv + deps backend; npm install frontend
-    make up               # PostgreSQL 16
+    make up               # PostgreSQL 16 + Redis
     make migrate          # alembic upgrade head (schema completo + RLS)
     make seed             # tenant "demo" com X-Burger e 1 pedido confirmado
     make dev-backend      # API em :8000
