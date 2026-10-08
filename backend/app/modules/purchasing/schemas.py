@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -45,3 +46,37 @@ class PurchaseSuggestion(BaseModel):
     lead_time_days: int
     suggested_quantity: str
     reason: str
+
+
+class PurchaseOrderItemIn(BaseModel):
+    ingredient_id: UUID
+    quantity: Decimal = Field(gt=0)
+    unit_cost: Decimal = Field(ge=0)
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: UUID
+    expected_date: date | None = None
+    items: list[PurchaseOrderItemIn] = Field(min_length=1)
+
+
+class PurchaseOrderItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    ingredient_id: UUID
+    quantity: Decimal
+    unit_cost: Decimal
+    received_quantity: Decimal
+
+
+class PurchaseOrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    supplier_id: UUID
+    status: str
+    expected_date: date | None
+    total_amount: Decimal
+    approved_by: UUID | None
+    created_at: datetime
+    items: list[PurchaseOrderItemOut]
+
