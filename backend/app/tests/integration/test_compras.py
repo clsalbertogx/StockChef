@@ -50,6 +50,36 @@ def test_po_draft_aprovar_e_cancelar() -> None:
     assert cancela.json()["status"] == "canceled"
 
 
+def test_total_usa_round_half_up() -> None:
+    h = _auth("po3")
+    sup = _supplier(h)
+    iid = _insumo(h, "Cebola", "1")
+    po = client.post("/api/v1/compras", headers=h, json={
+        "supplier_id": sup,
+        "items": [{"ingredient_id": iid, "quantity": "0.25", "unit_cost": "0.50"}],
+    })
+    assert po.status_code == 201, po.text
+    assert po.json()["total_amount"] == "0.13"
+
+
+def test_cancelar_duas_vezes_e_idempotente() -> None:
+    h = _auth("po4")
+    sup = _supplier(h)
+    iid = _insumo(h, "Cenoura", "1")
+    pid = client.post("/api/v1/compras", headers=h, json={
+        "supplier_id": sup,
+        "items": [{"ingredient_id": iid, "quantity": "1", "unit_cost": "1"}],
+    }).json()["id"]
+
+    first = client.post(f"/api/v1/compras/{pid}/cancelar", headers=h)
+    assert first.status_code == 200
+    assert first.json()["status"] == "canceled"
+
+    second = client.post(f"/api/v1/compras/{pid}/cancelar", headers=h)
+    assert second.status_code == 200
+    assert second.json()["status"] == "canceled"
+
+
 def test_aprovar_po_em_sent_409() -> None:
     h = _auth("po2")
     sup = _supplier(h)

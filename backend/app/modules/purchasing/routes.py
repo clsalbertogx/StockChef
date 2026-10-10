@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -162,7 +162,7 @@ def create_po(
             )
         )
         total += it.quantity * it.unit_cost
-    po.total_amount = total.quantize(Decimal("0.01"))
+    po.total_amount = total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     db.commit()
     return _po_out(db, po)
 
@@ -230,7 +230,9 @@ def cancel_po(
         raise DomainError(
             "not_found", "Pedido de compra não encontrado.", status.HTTP_404_NOT_FOUND
         )
-    if po.status in ("canceled", "received"):
+    if po.status == "canceled":
+        return _po_out(db, po)
+    if po.status == "received":
         raise DomainError(
             "invalid_state", "Pedido não pode ser cancelado.", status.HTTP_409_CONFLICT
         )
