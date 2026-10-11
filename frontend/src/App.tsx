@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import ComandaPage from "./pages/ComandaPage";
 import ComprasDetalhePage from "./pages/ComprasDetalhePage";
 import ComprasPage from "./pages/ComprasPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -94,6 +95,14 @@ export default function App() {
             element={
               <Protected>
                 <PedidosPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/pedidos/:id/comanda"
+            element={
+              <Protected>
+                <ComandaPage />
               </Protected>
             }
           />
