@@ -92,7 +92,7 @@ describe("ComprasPage", () => {
       suggested_quantity: "5",
       reason: "Estoque abaixo do mínimo",
     };
-    const fornecedor = { id: "s1", name: "Fornecedor A", lead_time_days: 2, active: true };
+    const fornecedor = { id: "s1", name: "Fornecedor A", lead_time_days: 2, status: "active" };
     const poCriada = {
       id: "p1",
       supplier_id: "s1",

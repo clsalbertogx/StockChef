@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+SupplierStatus = Literal["active", "inactive", "archived"]
 
 
 class SupplierCreate(BaseModel):
@@ -15,6 +18,7 @@ class SupplierCreate(BaseModel):
     phone: str | None = None
     lead_time_days: int = Field(default=0, ge=0)
     minimum_order_value: Decimal = Field(default=Decimal("0"), ge=0)
+    status: SupplierStatus = "active"
 
 
 class SupplierUpdate(BaseModel):
@@ -25,7 +29,7 @@ class SupplierUpdate(BaseModel):
     phone: str | None = None
     lead_time_days: int | None = Field(None, ge=0)
     minimum_order_value: Decimal | None = Field(None, ge=0)
-    active: bool | None = None
+    status: SupplierStatus | None = None
 
 
 class SupplierOut(BaseModel):
@@ -33,7 +37,7 @@ class SupplierOut(BaseModel):
     id: UUID
     name: str
     lead_time_days: int
-    active: bool = True
+    status: SupplierStatus
 
 
 class PurchaseSuggestion(BaseModel):

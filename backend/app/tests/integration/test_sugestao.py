@@ -80,3 +80,9 @@ def test_sugestao_usa_consumo_14d() -> None:
     assert Decimal(suj["consumption_daily"]) > 0
     assert Decimal(suj["suggested_quantity"]) > 0
     assert suj["reason"]
+
+
+def test_sugestao_dias_invalido_422() -> None:
+    h = _auth("sug-lim")
+    assert client.get("/api/v1/compras/sugestao?dias=0", headers=h).status_code == 422
+    assert client.get("/api/v1/compras/sugestao?dias=-1", headers=h).status_code == 422

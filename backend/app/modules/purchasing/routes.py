@@ -3,17 +3,16 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import current_actor, get_tenant_db, require_roles
 from app.core.errors import DomainError
 from app.core.tenant import Actor
-from app.modules.catalog.models import Ingredient, StockLevel, Supplier
+from app.modules.catalog.models import Ingredient, Supplier
 from app.modules.catalog.service import default_store
-from app.modules.inventory.service import apply_movement
+from app.modules.inventory.service import apply_movement, ensure_stock_level
 from app.modules.purchasing.models import (
     GoodsReceipt,
     GoodsReceiptItem,
@@ -57,7 +56,7 @@ def create_supplier(
         phone=payload.phone,
         lead_time_days=payload.lead_time_days,
         minimum_order_value=payload.minimum_order_value,
-        status="active",
+        status=payload.status,
     )
     db.add(supplier)
     db.commit()
@@ -117,13 +116,16 @@ def delete_supplier(
     s = db.get(Supplier, supplier_id)
     if s is None or s.tenant_id != tid:
         raise DomainError("not_found", "Fornecedor não encontrado.", status.HTTP_404_NOT_FOUND)
-    db.delete(s)
-    db.commit()
+    # soft delete: purchase_orders/goods_receipts referenciam o fornecedor com
+    # ON DELETE RESTRICT, então aposentamos em vez de remover. Idempotente.
+    if s.status != "inactive":
+        s.status = "inactive"
+        db.commit()
 
 
 @router.get("/compras/sugestao")
 def compras_sugestao(
-    dias: int = 14,
+    dias: int = Query(14, ge=1),
     db: Session = Depends(get_tenant_db),  # noqa: B008
     actor: Actor = Depends(current_actor),  # noqa: B008
 ) -> list[dict]:
@@ -285,39 +287,13 @@ def receive_po(
             )
         ing = db.get(Ingredient, po_item.ingredient_id)
         assert ing is not None
-        sl = db.scalar(
-            select(StockLevel)
-            .where(
-                StockLevel.store_id == po.store_id,
-                StockLevel.ingredient_id == po_item.ingredient_id,
-            )
-            .with_for_update()
+        sl = ensure_stock_level(
+            db,
+            tenant_id=tid,
+            store_id=po.store_id,
+            ingredient_id=po_item.ingredient_id,
+            average_cost=ing.average_cost,
         )
-        if sl is None:
-            # corrida: SELECT FOR UPDATE não trava linha inexistente; o savepoint
-            # absorve o unique violation e a releitura pega o nível criado por outra tx.
-            try:
-                with db.begin_nested():
-                    db.add(
-                        StockLevel(
-                            tenant_id=tid,
-                            store_id=po.store_id,
-                            ingredient_id=po_item.ingredient_id,
-                            quantity=Decimal("0"),
-                            average_cost=ing.average_cost,
-                        )
-                    )
-            except IntegrityError:
-                pass
-            sl = db.scalar(
-                select(StockLevel)
-                .where(
-                    StockLevel.store_id == po.store_id,
-                    StockLevel.ingredient_id == po_item.ingredient_id,
-                )
-                .with_for_update()
-            )
-            assert sl is not None
         db.add(
             GoodsReceiptItem(
                 tenant_id=tid,

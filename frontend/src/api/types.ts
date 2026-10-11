@@ -75,7 +75,7 @@ export interface Supplier {
   id: string;
   name: string;
   lead_time_days: number;
-  active: boolean;
+  status: "active" | "inactive" | "archived";
 }
 
 export interface LossIn {

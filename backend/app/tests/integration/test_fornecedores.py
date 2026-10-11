@@ -29,6 +29,7 @@ def test_criar_e_listar_fornecedores() -> None:
     assert one.status_code == 200
     assert one.json()["name"] == "Laticínios ABC"
     assert one.json()["lead_time_days"] == 2
+    assert one.json()["status"] == "active"
 
 
 def test_update_delete_fornecedor() -> None:
@@ -47,10 +48,18 @@ def test_update_delete_fornecedor() -> None:
     assert patch.json()["name"] == "Fornecedor Novo"
     assert patch.json()["lead_time_days"] == 5
 
-    # Delete
+    # Delete é aposentadoria (soft): status inactive, ainda consultável
     d = client.delete(f"/api/v1/fornecedores/{fid}", headers=h)
     assert d.status_code == 204
 
-    # Verify deleted
     get = client.get(f"/api/v1/fornecedores/{fid}", headers=h)
-    assert get.status_code == 404
+    assert get.status_code == 200
+    assert get.json()["status"] == "inactive"
+
+    # idempotente: segunda remoção não falha
+    assert client.delete(f"/api/v1/fornecedores/{fid}", headers=h).status_code == 204
+
+    # patch de status reativa
+    react = client.patch(f"/api/v1/fornecedores/{fid}", headers=h, json={"status": "active"})
+    assert react.status_code == 200
+    assert react.json()["status"] == "active"

@@ -3,6 +3,12 @@ import { type FormEvent, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Supplier } from "../api/types";
 
+const SUPPLIER_STATUS_LABEL: Record<string, string> = {
+  active: "Ativo",
+  inactive: "Inativo",
+  archived: "Arquivado",
+};
+
 export default function FornecedoresPage() {
   const qc = useQueryClient();
   const {
@@ -122,7 +128,7 @@ export default function FornecedoresPage() {
               <tr key={f.id} className="border-t">
                 <td className="py-2">{f.name}</td>
                 <td className="tabular-nums">{f.lead_time_days} dias</td>
-                <td>{f.active ? "Ativo" : "Inativo"}</td>
+                <td>{SUPPLIER_STATUS_LABEL[f.status] ?? f.status}</td>
               </tr>
             ))
           )}
