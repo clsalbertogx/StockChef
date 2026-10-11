@@ -10,6 +10,7 @@ import FilaKdsPage from "./pages/FilaKdsPage";
 import FornecedoresPage from "./pages/FornecedoresPage";
 import InsumosPage from "./pages/InsumosPage";
 import InventarioPage from "./pages/InventarioPage";
+import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import PedidoDetalhePage from "./pages/PedidoDetalhePage";
 import PedidosPage from "./pages/PedidosPage";
@@ -32,10 +33,11 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route
-            path="/"
+            path="/dashboard"
             element={
               <Protected>
                 <DashboardPage />
