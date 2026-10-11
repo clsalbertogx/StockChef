@@ -46,3 +46,10 @@ def test_movimentos_lista_vendas_e_perdas() -> None:
     assert len(movs) == 1
     assert movs[0]["type"] == "loss"
     assert movs[0]["quantity"] == "-0.5000"
+
+
+def test_movimentos_limit_invalido_422() -> None:
+    h = _auth("movs-lim")
+    assert client.get("/api/v1/estoque/movimentos?limit=0", headers=h).status_code == 422
+    assert client.get("/api/v1/estoque/movimentos?limit=201", headers=h).status_code == 422
+    assert client.get("/api/v1/estoque/movimentos?limit=abc", headers=h).status_code == 422

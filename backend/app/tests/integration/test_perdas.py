@@ -54,3 +54,14 @@ def test_perda_saldo_insuficiente_409() -> None:
     })
     assert resp.status_code == 409
     assert resp.json()["code"] == "invalid_stock_operation"
+
+
+def test_perda_insumo_sem_stock_level_erro_dominio() -> None:
+    h = _auth("perdas4")
+    iid = _insumo(h, "Sal", "1.00", "0")  # nunca estocado: sem linha em stock_levels
+    resp = client.post("/api/v1/perdas", headers=h, json={
+        "ingredient_id": iid, "quantity": "1", "reason": "damage",
+    })
+    # cria o stock level e falha por saldo insuficiente (domínio), não 404 no_stock_level
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["code"] == "invalid_stock_operation"

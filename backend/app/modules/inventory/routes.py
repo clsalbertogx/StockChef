@@ -3,14 +3,14 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_tenant_db, require_roles
 from app.core.errors import DomainError
 from app.core.tenant import Actor
-from app.modules.catalog.models import Ingredient, StockLevel, StockMovement, Unit
+from app.modules.catalog.models import Ingredient, StockMovement, Unit
 from app.modules.catalog.routes import _require_store, _tenant_id
 from app.modules.catalog.service import default_store, stock_totals
 from app.modules.inventory.models import InventoryCount, InventoryCountItem, Loss, _now
@@ -22,7 +22,7 @@ from app.modules.inventory.schemas import (
     LossOut,
     MovementOut,
 )
-from app.modules.inventory.service import apply_movement
+from app.modules.inventory.service import apply_movement, ensure_stock_level
 
 router = APIRouter(tags=["estoque"])
 
@@ -42,14 +42,13 @@ def create_loss(
         if payload.store_id
         else default_store(db, tid).id
     )
-    # custo real lido ANTES do movimento (apply_movement só altera custo em purchase)
-    sl = db.scalar(
-        select(StockLevel).where(
-            StockLevel.store_id == store_id,
-            StockLevel.ingredient_id == payload.ingredient_id,
-        )
+    # custo real lido ANTES do movimento (apply_movement só altera custo em purchase).
+    # garante o stock level para que a perda sobre insumo nunca estocado falhe com
+    # erro de domínio (saldo insuficiente), não 404 no_stock_level.
+    sl = ensure_stock_level(
+        db, tenant_id=tid, store_id=store_id, ingredient_id=payload.ingredient_id
     )
-    unit_cost = sl.average_cost if sl else Decimal("0")
+    unit_cost = sl.average_cost
     apply_movement(
         db,
         tenant_id=tid,
@@ -107,7 +106,7 @@ def list_movimentos(
     db: Session = Depends(get_tenant_db),  # noqa: B008
     ingredient_id: UUID | None = None,
     tipo: str | None = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
 ) -> list[MovementOut]:
     tid = _tenant_id(db)
     q = select(StockMovement).where(StockMovement.tenant_id == tid)
@@ -115,7 +114,7 @@ def list_movimentos(
         q = q.where(StockMovement.ingredient_id == ingredient_id)
     if tipo is not None:
         q = q.where(StockMovement.type == tipo)
-    q = q.order_by(StockMovement.created_at.desc()).limit(min(limit, 200))
+    q = q.order_by(StockMovement.created_at.desc()).limit(limit)
     rows = db.scalars(q).all()
     return [MovementOut.model_validate(m) for m in rows]
 
@@ -196,11 +195,12 @@ def close_inventory(
             row.counted_quantity = row.system_quantity
         row.difference = row.counted_quantity - row.system_quantity
         if row.difference != 0:
-            sl = db.scalar(select(StockLevel).where(
-                StockLevel.store_id == count.store_id,
-                StockLevel.ingredient_id == row.ingredient_id,
-            ))
-            unit_cost = sl.average_cost if sl else Decimal("0")
+            sl = ensure_stock_level(
+                db,
+                tenant_id=tid,
+                store_id=count.store_id,
+                ingredient_id=row.ingredient_id,
+            )
             apply_movement(
                 db,
                 tenant_id=tid,
@@ -208,7 +208,7 @@ def close_inventory(
                 ingredient_id=row.ingredient_id,
                 type_="adjustment",
                 quantity=row.difference,
-                unit_cost=unit_cost,
+                unit_cost=sl.average_cost,
                 reference_type="inventory_count",
                 reference_id=count.id,
                 reason="Ajuste de inventario",

@@ -63,3 +63,25 @@ def test_inventario_ajuste_por_diferenca() -> None:
     # outro tenant não enxerga
     h2 = _auth("invent2")
     assert client.get(f"/api/v1/inventarios/{cid}", headers=h2).status_code == 404
+
+
+def test_inventario_ajuste_insumo_sem_stock_level() -> None:
+    h = _auth("invent-sem-stock")
+    # insumo nunca estocado: initial_stock 0 → não há linha em stock_levels
+    iid = _insumo(h, "Açúcar", "4.00", "0")
+    cid = client.post("/api/v1/inventarios", headers=h).json()["id"]
+
+    resp = client.post(f"/api/v1/inventarios/{cid}/itens", headers=h, json={
+        "items": [{"ingredient_id": iid, "counted_quantity": "7"}],
+    })
+    assert resp.status_code == 200
+
+    close = client.post(f"/api/v1/inventarios/{cid}/fechar", headers=h)
+    assert close.status_code == 200, close.text
+    assert close.json()["status"] == "closed"
+    item = next(i for i in close.json()["items"] if i["ingredient_id"] == iid)
+    assert item["difference"] == "7.0000"
+    assert item["adjusted"] is True
+
+    ins = client.get(f"/api/v1/insumos/{iid}", headers=h).json()
+    assert ins["stock_total"] == "7.00"

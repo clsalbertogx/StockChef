@@ -4,10 +4,49 @@ from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import DomainError
 from app.modules.catalog.models import StockLevel, StockMovement
+
+
+def ensure_stock_level(
+    db: Session,
+    *,
+    tenant_id: UUID | str,
+    store_id: UUID,
+    ingredient_id: UUID,
+    average_cost: Decimal = Decimal("0"),
+) -> StockLevel:
+    sl = db.scalar(
+        select(StockLevel)
+        .where(StockLevel.store_id == store_id, StockLevel.ingredient_id == ingredient_id)
+        .with_for_update()
+    )
+    if sl is None:
+        # corrida: SELECT FOR UPDATE não trava linha inexistente; o savepoint
+        # absorve o unique violation e a releitura pega o nível criado por outra tx.
+        try:
+            with db.begin_nested():
+                db.add(
+                    StockLevel(
+                        tenant_id=tenant_id,
+                        store_id=store_id,
+                        ingredient_id=ingredient_id,
+                        quantity=Decimal("0"),
+                        average_cost=average_cost,
+                    )
+                )
+        except IntegrityError:
+            pass
+        sl = db.scalar(
+            select(StockLevel)
+            .where(StockLevel.store_id == store_id, StockLevel.ingredient_id == ingredient_id)
+            .with_for_update()
+        )
+        assert sl is not None
+    return sl
 
 
 def weighted_average_cost(
