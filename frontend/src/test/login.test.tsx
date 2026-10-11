@@ -18,11 +18,19 @@ describe("LoginPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("faz login e guarda o token", async () => {
+  it("faz login via fluxo email-first e guarda o token", async () => {
+    let fetchCall = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: RequestInfo | URL) => {
-        if (String(url) === "/api/v1/auth/login") {
+        fetchCall++;
+        const u = String(url);
+        if (u.includes("/api/v1/auth/tenants-by-email")) {
+          return jsonResponse({
+            tenants: [{ slug: "demo", name: "Demo Restaurante" }],
+          });
+        }
+        if (u === "/api/v1/auth/login") {
           return jsonResponse({
             access_token: "abc",
             user: { id: "1", email: "a@b.com", name: "A", role: "owner" },
@@ -40,8 +48,12 @@ describe("LoginPage", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.type(screen.getByLabelText(/tenant/i), "demo");
+    // Step 1: email
     await userEvent.type(screen.getByLabelText(/e-mail/i), "a@b.com");
+    await userEvent.click(screen.getByRole("button", { name: /continuar/i }));
+
+    // Step 2: password (auto-advances since only 1 tenant)
+    await waitFor(() => screen.getByLabelText(/senha/i));
     await userEvent.type(screen.getByLabelText(/senha/i), "demo1234");
     await userEvent.click(screen.getByRole("button", { name: /entrar/i }));
 

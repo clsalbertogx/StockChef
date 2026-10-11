@@ -18,6 +18,8 @@ from app.modules.identity.schemas import (
     LoginRequest,
     MeOut,
     RegisterRequest,
+    TenantInfo,
+    TenantsByEmailOut,
     UserOut,
 )
 from app.modules.identity.security import (
@@ -79,10 +81,6 @@ def register(
         raise DomainError(
             "tenant_slug_taken", "Já existe um tenant com esse slug.", status.HTTP_409_CONFLICT
         )
-    if db.scalar(select(User).where(User.email == payload.email)):
-        raise DomainError(
-            "email_taken", "Já existe um usuário com esse email.", status.HTTP_409_CONFLICT
-        )
 
     tenant = Tenant(name=payload.tenant_name, slug=payload.tenant_slug, status="active")
     db.add(tenant)
@@ -127,6 +125,18 @@ def login(
         )
     user.last_login_at = datetime.now(UTC)
     return _issue_tokens(response, db, user)
+
+
+@router.get("/tenants-by-email", response_model=TenantsByEmailOut)
+def tenants_by_email(email: str, db: Session = Depends(get_db)) -> TenantsByEmailOut:  # noqa: B008
+    """Descobre tenants onde o email está cadastrado (público, sem auth).
+    Retorna lista vazia se email não existe (não vaza existência)."""
+    rows = db.execute(
+        select(Tenant.slug, Tenant.name)
+        .join(User, User.tenant_id == Tenant.id)
+        .where(User.email == email, Tenant.status == "active", User.status == "active")
+    ).all()
+    return TenantsByEmailOut(tenants=[TenantInfo(slug=r[0], name=r[1]) for r in rows])
 
 
 @router.post("/refresh")

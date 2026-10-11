@@ -296,3 +296,8 @@ export interface ZoneCreate {
   min_order_value: string;
   eta_minutes: number;
 }
+
+export interface TenantInfo {
+  slug: string;
+  name: string;
+}

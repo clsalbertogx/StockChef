@@ -8,9 +8,16 @@ export interface SessionUser {
   role: string;
 }
 
+export interface RegisterData {
+  tenant_name: string;
+  tenant_slug: string;
+  name: string;
+}
+
 interface AuthContextValue {
   user: SessionUser | null;
   login: (tenantSlug: string, email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -40,6 +47,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(body.user);
   }, []);
 
+  const register = useCallback(async (email: string, password: string, data: RegisterData) => {
+    const res = await fetch("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new ApiError(err.detail || "Erro ao criar conta", res.status);
+    }
+    const body = await res.json();
+    localStorage.setItem("sc_token", body.access_token);
+    setUser(body.user);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api("/auth/logout", { method: "POST" });
@@ -49,7 +71,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, login, register, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

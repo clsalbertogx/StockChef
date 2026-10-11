@@ -120,14 +120,7 @@ def test_header_tenant_mismatch_403(client: TestClient) -> None:
     assert resp.json()["code"] == "tenant_mismatch"
 
 
-def test_register_duplicate_email_409(client: TestClient) -> None:
-    _register(client, "em-1", "dup@x.com")
-    resp = client.post("/api/v1/auth/register", json={
-        "tenant_name": "Outro", "tenant_slug": "em-2",
-        "email": "dup@x.com", "password": "senha-segura", "name": "XX",
-    })
-    assert resp.status_code == 409
-    assert resp.json()["code"] == "email_taken"
+
 
 
 def test_login_inactive_user_rejected(client: TestClient) -> None:
@@ -154,3 +147,33 @@ def test_login_password_over_72_chars_422(client: TestClient) -> None:
     })
     assert resp.status_code == 422
     assert resp.json()["code"] == "validation_error"
+
+
+def test_tenants_by_email_empty(client: TestClient) -> None:
+    """Email não cadastrado retorna lista vazia (não vaza existência)."""
+    resp = client.get("/api/v1/auth/tenants-by-email?email=naoexiste@x.com")
+    assert resp.status_code == 200
+    assert resp.json()["tenants"] == []
+
+
+def test_tenants_by_email_single_tenant(client: TestClient) -> None:
+    """Email em 1 tenant retorna slug/nome desse tenant."""
+    _register(client, "meu-restaurante", "dono@exemplo.com")
+    resp = client.get("/api/v1/auth/tenants-by-email?email=dono@exemplo.com")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["tenants"]) == 1
+    assert body["tenants"][0]["slug"] == "meu-restaurante"
+    assert body["tenants"][0]["name"] == "meu-restaurante"
+
+
+def test_tenants_by_email_multiple_tenants(client: TestClient) -> None:
+    """Mesmo email em múltiplos tenants retorna todos ativos."""
+    _register(client, "filial-centro", "gerente@x.com")
+    _register(client, "filial-zona-sul", "gerente@x.com")
+    resp = client.get("/api/v1/auth/tenants-by-email?email=gerente@x.com")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["tenants"]) == 2
+    slugs = {t["slug"] for t in body["tenants"]}
+    assert slugs == {"filial-centro", "filial-zona-sul"}

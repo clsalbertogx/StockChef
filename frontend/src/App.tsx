@@ -18,6 +18,7 @@ import CardapioPage from "./pages/public/CardapioPage";
 import CarrinhoPage from "./pages/public/CarrinhoPage";
 import CheckoutPage from "./pages/public/CheckoutPage";
 import PedidoPublicoPage from "./pages/public/PedidoPublicoPage";
+import RegisterPage from "./pages/RegisterPage";
 import ZonasPage from "./pages/ZonasPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route
             path="/"
             element={

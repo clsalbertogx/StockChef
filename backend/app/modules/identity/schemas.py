@@ -41,3 +41,12 @@ class MeOut(BaseModel):
     tenant_id: UUID
     tenant_name: str
     tenant_slug: str
+
+
+class TenantInfo(BaseModel):
+    slug: str
+    name: str
+
+
+class TenantsByEmailOut(BaseModel):
+    tenants: list[TenantInfo]
