@@ -60,6 +60,18 @@ class PurchaseOrderCreate(BaseModel):
     items: list[PurchaseOrderItemIn] = Field(min_length=1)
 
 
+class ReceiptItemIn(BaseModel):
+    purchase_order_item_id: UUID
+    received_quantity: Decimal = Field(gt=0)
+    unit_cost: Decimal = Field(ge=0)
+
+
+class GoodsReceiptIn(BaseModel):
+    items: list[ReceiptItemIn] = Field(min_length=1)
+    invoice_number: str | None = None
+    notes: str | None = None
+
+
 class PurchaseOrderItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
