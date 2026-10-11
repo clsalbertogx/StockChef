@@ -84,4 +84,44 @@ describe("InventarioPage", () => {
       ),
     );
   });
+
+  it("persiste as contagens digitadas ao clicar Fechar diretamente", async () => {
+    let contagens: unknown[] = [];
+    let itensBody: unknown = null;
+    let fechou = false;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/v1/insumos") return jsonResponse([insumo]);
+      if (u === "/api/v1/inventarios" && init?.method === "POST") {
+        contagens = [contagem];
+        return jsonResponse(contagem, 201);
+      }
+      if (u === "/api/v1/inventarios") return jsonResponse(contagens);
+      if (u === "/api/v1/inventarios/c1/itens" && init?.method === "POST") {
+        itensBody = JSON.parse(String(init.body));
+        return jsonResponse({ ...contagem, status: "closed" });
+      }
+      if (u === "/api/v1/inventarios/c1/fechar" && init?.method === "POST") {
+        fechou = true;
+        return jsonResponse({ ...contagem, status: "closed" });
+      }
+      throw new Error(`fetch inesperado: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InventarioPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText(/Nenhuma contagem/i);
+    await userEvent.click(screen.getByRole("button", { name: /abrir contagem/i }));
+    await screen.findByText("Queijo");
+    await userEvent.type(screen.getByLabelText(/Contagem de Queijo/i), "5");
+    await userEvent.click(screen.getByRole("button", { name: /^fechar$/i }));
+
+    await waitFor(() => expect(fechou).toBe(true));
+    expect(itensBody).toEqual({ items: [{ ingredient_id: "i1", counted_quantity: "5" }] });
+  });
 });

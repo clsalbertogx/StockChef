@@ -26,22 +26,31 @@ export default function InventarioPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventarios"] }),
   });
 
+  const itemsFor = (countId: string) =>
+    Object.entries(counted[countId] ?? {})
+      .filter(([, value]) => value.trim() !== "")
+      .map(([ingredient_id, counted_quantity]) => ({ ingredient_id, counted_quantity }));
+
   const saveItems = useMutation({
-    mutationFn: (countId: string) => {
-      const items = Object.entries(counted[countId] ?? {})
-        .filter(([, value]) => value.trim() !== "")
-        .map(([ingredient_id, counted_quantity]) => ({ ingredient_id, counted_quantity }));
-      return api<InventoryCount>(`/inventarios/${countId}/itens`, {
+    mutationFn: (countId: string) =>
+      api<InventoryCount>(`/inventarios/${countId}/itens`, {
         method: "POST",
-        body: JSON.stringify({ items }),
-      });
-    },
+        body: JSON.stringify({ items: itemsFor(countId) }),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventarios"] }),
   });
 
   const close = useMutation({
-    mutationFn: (countId: string) =>
-      api<InventoryCount>(`/inventarios/${countId}/fechar`, { method: "POST" }),
+    mutationFn: async (count: InventoryCount) => {
+      const items = itemsFor(count.id);
+      if (items.length > 0) {
+        await api<InventoryCount>(`/inventarios/${count.id}/itens`, {
+          method: "POST",
+          body: JSON.stringify({ items }),
+        });
+      }
+      return api<InventoryCount>(`/inventarios/${count.id}/fechar`, { method: "POST" });
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventarios"] }),
   });
 
@@ -106,7 +115,7 @@ export default function InventarioPage() {
                   <button
                     type="button"
                     disabled={close.isPending}
-                    onClick={() => close.mutate(c.id)}
+                    onClick={() => close.mutate(c)}
                     className="rounded bg-green-700 px-3 py-1 text-sm text-white disabled:opacity-50"
                   >
                     {close.isPending ? "Fechando…" : "Fechar"}

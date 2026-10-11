@@ -37,6 +37,9 @@ export default function ComprasPage() {
     queryFn: () => api<Supplier[]>("/fornecedores"),
   });
   const [supplierId, setSupplierId] = useState("");
+  const [custos, setCustos] = useState<Record<string, string>>({});
+  const custosOk =
+    sugestoes.length > 0 && sugestoes.every((s) => Number(custos[s.ingredient_id]) > 0);
 
   const createPo = useMutation({
     mutationFn: (items: PurchaseSuggestion[]) =>
@@ -47,7 +50,7 @@ export default function ComprasPage() {
           items: items.map((s) => ({
             ingredient_id: s.ingredient_id,
             quantity: s.suggested_quantity,
-            unit_cost: "0",
+            unit_cost: custos[s.ingredient_id] ?? "",
           })),
         }),
       }),
@@ -112,6 +115,24 @@ export default function ComprasPage() {
                         {s.suggested_quantity} {s.unit_symbol}
                       </strong>
                     </div>
+                    <label className="mt-2 inline-flex items-center gap-2">
+                      <span className="text-sm text-gray-700">Custo unit. (R$)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        aria-label={`Custo unitário de ${s.name}`}
+                        value={custos[s.ingredient_id] ?? ""}
+                        onChange={(e) =>
+                          setCustos((prev) => ({
+                            ...prev,
+                            [s.ingredient_id]: e.target.value,
+                          }))
+                        }
+                        className="w-24 rounded border px-2 py-1 text-right"
+                      />
+                    </label>
                   </li>
                 ))}
                 {sugestoes.length === 0 && (
@@ -122,7 +143,7 @@ export default function ComprasPage() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    createPo.mutate(sugestoes);
+                    if (custosOk) createPo.mutate(sugestoes);
                   }}
                   className="flex flex-wrap items-end gap-3"
                 >
@@ -144,7 +165,7 @@ export default function ComprasPage() {
                   </label>
                   <button
                     type="submit"
-                    disabled={createPo.isPending || !supplierId}
+                    disabled={createPo.isPending || !supplierId || !custosOk}
                     className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
                   >
                     {createPo.isPending ? "Criando…" : "Criar pedido de compra"}
