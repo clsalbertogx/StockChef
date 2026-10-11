@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { CartProvider } from "./cart/CartContext";
 import ComandaPage from "./pages/ComandaPage";
 import ComprasDetalhePage from "./pages/ComprasDetalhePage";
 import ComprasPage from "./pages/ComprasPage";
@@ -13,6 +14,8 @@ import LoginPage from "./pages/LoginPage";
 import PedidoDetalhePage from "./pages/PedidoDetalhePage";
 import PedidosPage from "./pages/PedidosPage";
 import ProdutosPage from "./pages/ProdutosPage";
+import CardapioPage from "./pages/public/CardapioPage";
+import CarrinhoPage from "./pages/public/CarrinhoPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -120,6 +123,22 @@ export default function App() {
               <Protected>
                 <FilaKdsPage />
               </Protected>
+            }
+          />
+          <Route
+            path="/cardapio/:slug"
+            element={
+              <CartProvider>
+                <CardapioPage />
+              </CartProvider>
+            }
+          />
+          <Route
+            path="/cardapio/:slug/carrinho"
+            element={
+              <CartProvider>
+                <CarrinhoPage />
+              </CartProvider>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
