@@ -65,3 +65,23 @@ class OrderOut(BaseModel):
     notes: str | None
     created_at: datetime
     order_items: list[OrderItemOut]
+
+
+class KitchenItemOut(BaseModel):
+    order_item_id: UUID
+    product_name: str
+    quantity: int
+    notes: str | None = None
+    modifiers: list = []
+
+
+class KitchenOrderOut(BaseModel):
+    order_id: UUID
+    code: str
+    status: str
+    channel: str
+    fulfillment_type: str
+    notes: str | None
+    created_at: datetime
+    elapsed_minutes: int
+    items: list[KitchenItemOut]

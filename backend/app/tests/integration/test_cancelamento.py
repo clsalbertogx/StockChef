@@ -1,11 +1,12 @@
 from decimal import ROUND_HALF_UP, Decimal
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+
 from app.core.db import SessionLocal, set_tenant
 from app.main import app
 from app.modules.catalog.models import StockLevel
 from app.modules.identity.models import Tenant
-from uuid import UUID
 
 client = TestClient(app)
 
@@ -78,7 +79,11 @@ def test_cancelar_reverte_estoque_e_preserva_custo_medio() -> None:
     assert _stock(ing, slug) == "2.94"
     assert _cost(ing, slug) == "45.00"
 
-    r = client.post(f"/api/v1/pedidos/{o['id']}/cancelar", headers=h, json={"motivo": "cliente desistiu"})
+    r = client.post(
+        f"/api/v1/pedidos/{o['id']}/cancelar",
+        headers=h,
+        json={"motivo": "cliente desistiu"},
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "cancelled"
     assert _stock(ing, slug) == "3.00"
@@ -112,12 +117,19 @@ def test_cancelar_pending_stock_nao_cria_reversao() -> None:
     db = SessionLocal()
     try:
         set_tenant(db, _tid(slug))
-        db.execute(text("UPDATE stock_levels SET quantity = 0.02 WHERE ingredient_id = :i"), {"i": ing})
+        db.execute(
+            text("UPDATE stock_levels SET quantity = 0.02 WHERE ingredient_id = :i"),
+            {"i": ing},
+        )
         db.commit()
     finally:
         db.close()
     client.post(f"/api/v1/pedidos/{o['id']}/confirmar", headers=h)
-    r = client.post(f"/api/v1/pedidos/{o['id']}/cancelar", headers=h, json={"motivo": "sem estoque"})
+    r = client.post(
+        f"/api/v1/pedidos/{o['id']}/cancelar",
+        headers=h,
+        json={"motivo": "sem estoque"},
+    )
     assert r.status_code == 200
     assert _types(ing, slug) == []
     assert _stock(ing, slug) == "0.02"

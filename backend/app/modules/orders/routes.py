@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import current_actor, get_tenant_db
+from app.core.deps import current_actor, get_tenant_db, require_roles
 from app.core.errors import DomainError
 from app.core.tenant import Actor
 from app.modules.catalog.models import Product, StockMovement, Store
@@ -18,7 +18,13 @@ from app.modules.inventory.service import apply_movement, ensure_stock_level
 from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent
 from app.modules.orders.outbox import drain_outbox
 from app.modules.orders.schemas import (
-    OrderCancel, OrderCreate, OrderItemOut, OrderOut, OrderStatusUpdate,
+    KitchenItemOut,
+    KitchenOrderOut,
+    OrderCancel,
+    OrderCreate,
+    OrderItemOut,
+    OrderOut,
+    OrderStatusUpdate,
 )
 from app.modules.orders.service import availability, availability_ok, recipe_snapshot
 
@@ -373,3 +379,53 @@ def cancel_order(
                       payload={"motivo": payload.motivo}))
     db.commit()
     return _to_out(db, order)
+
+
+KDS_STATUSES = ("confirmed", "confirmed_pending_stock", "preparing")
+
+
+@router.get("/cozinha/fila")
+def kitchen_queue(
+    actor: Actor = Depends(require_roles("kitchen", "manager", "owner")),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> list[KitchenOrderOut]:
+    tid = _tenant_id(db)
+    orders = db.scalars(
+        select(Order)
+        .where(Order.tenant_id == tid, Order.status.in_(KDS_STATUSES))
+        .order_by(Order.created_at.asc())
+    ).all()
+    if not orders:
+        return []
+    order_ids = [o.id for o in orders]
+    rows = db.execute(
+        select(OrderItem, Product.name)
+        .join(Product, Product.id == OrderItem.product_id)
+        .where(OrderItem.order_id.in_(order_ids))
+    ).all()
+    by_order: dict[UUID, list[KitchenItemOut]] = {}
+    for item, product_name in rows:
+        by_order.setdefault(item.order_id, []).append(
+            KitchenItemOut(
+                order_item_id=item.id,
+                product_name=product_name,
+                quantity=item.quantity,
+                notes=item.notes,
+                modifiers=item.modifiers or [],
+            )
+        )
+    now = datetime.now(UTC)
+    return [
+        KitchenOrderOut(
+            order_id=o.id,
+            code=o.code,
+            status=o.status,
+            channel=o.channel,
+            fulfillment_type=o.fulfillment_type,
+            notes=o.notes,
+            created_at=o.created_at,
+            elapsed_minutes=max(0, int((now - o.created_at).total_seconds() // 60)),
+            items=by_order.get(o.id, []),
+        )
+        for o in orders
+    ]
