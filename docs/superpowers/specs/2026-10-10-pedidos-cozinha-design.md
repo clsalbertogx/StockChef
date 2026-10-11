@@ -52,6 +52,7 @@ Nenhuma tabela nova, nenhuma migration. Uso fiel ao DDL:
 | `confirmed_pending_stock` | `preparing` | kitchen, manager, owner |
 | `preparing` | `ready` | kitchen, manager, owner |
 | `ready` | `delivered` | cashier, manager, owner |
+| `ready` | `completed` | cashier, manager, owner |
 | `delivered` | `completed` | owner, manager |
 | `ready` | `cancelled` | rota `/cancelar` (§3) |
 | qualquer-aberto (*) | `cancelled` | rota `/cancelar` (§3) |
