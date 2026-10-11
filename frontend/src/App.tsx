@@ -1,9 +1,12 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import ComprasDetalhePage from "./pages/ComprasDetalhePage";
+import ComprasPage from "./pages/ComprasPage";
 import DashboardPage from "./pages/DashboardPage";
 import EstoquePage from "./pages/EstoquePage";
 import FornecedoresPage from "./pages/FornecedoresPage";
 import InsumosPage from "./pages/InsumosPage";
+import InventarioPage from "./pages/InventarioPage";
 import LoginPage from "./pages/LoginPage";
 import PedidoDetalhePage from "./pages/PedidoDetalhePage";
 import PedidosPage from "./pages/PedidosPage";
@@ -58,6 +61,30 @@ export default function App() {
             element={
               <Protected>
                 <FornecedoresPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventario"
+            element={
+              <Protected>
+                <InventarioPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/compras"
+            element={
+              <Protected>
+                <ComprasPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/compras/:id"
+            element={
+              <Protected>
+                <ComprasDetalhePage />
               </Protected>
             }
           />
