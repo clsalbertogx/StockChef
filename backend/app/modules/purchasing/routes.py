@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import current_actor, get_tenant_db, require_roles
@@ -240,6 +241,14 @@ def receive_po(
         raise DomainError(
             "not_found", "Pedido de compra não encontrado.", status.HTTP_404_NOT_FOUND
         )
+    # idempotência: (po, invoice_number) já recebido → devolve o estado atual sem reaplicar.
+    if db.scalar(
+        select(GoodsReceipt.id).where(
+            GoodsReceipt.purchase_order_id == po.id,
+            GoodsReceipt.invoice_number == payload.invoice_number,
+        )
+    ) is not None:
+        return _po_out(db, po)
     if po.status not in ("sent", "partially_received"):
         raise DomainError(
             "invalid_state", "Pedido não pode ser recebido.", status.HTTP_409_CONFLICT
@@ -285,15 +294,30 @@ def receive_po(
             .with_for_update()
         )
         if sl is None:
-            sl = StockLevel(
-                tenant_id=tid,
-                store_id=po.store_id,
-                ingredient_id=po_item.ingredient_id,
-                quantity=Decimal("0"),
-                average_cost=ing.average_cost,
+            # corrida: SELECT FOR UPDATE não trava linha inexistente; o savepoint
+            # absorve o unique violation e a releitura pega o nível criado por outra tx.
+            try:
+                with db.begin_nested():
+                    db.add(
+                        StockLevel(
+                            tenant_id=tid,
+                            store_id=po.store_id,
+                            ingredient_id=po_item.ingredient_id,
+                            quantity=Decimal("0"),
+                            average_cost=ing.average_cost,
+                        )
+                    )
+            except IntegrityError:
+                pass
+            sl = db.scalar(
+                select(StockLevel)
+                .where(
+                    StockLevel.store_id == po.store_id,
+                    StockLevel.ingredient_id == po_item.ingredient_id,
+                )
+                .with_for_update()
             )
-            db.add(sl)
-            db.flush()
+            assert sl is not None
         db.add(
             GoodsReceiptItem(
                 tenant_id=tid,
@@ -314,7 +338,7 @@ def receive_po(
             unit_cost=it.unit_cost,
             reference_type="goods_receipt",
             reference_id=receipt.id,
-            idempotency_key=f"receipt:{receipt.id}:{po_item.id}",
+            idempotency_key=f"receipt:{payload.invoice_number}:{po_item.id}",
             user_id=actor.id,
         )
         ing.average_cost = sl.average_cost

@@ -68,7 +68,7 @@ class ReceiptItemIn(BaseModel):
 
 class GoodsReceiptIn(BaseModel):
     items: list[ReceiptItemIn] = Field(min_length=1)
-    invoice_number: str | None = None
+    invoice_number: str = Field(min_length=1, max_length=200)
     notes: str | None = None
 
 

@@ -44,6 +44,7 @@ def test_recebimento_parcial_aplica_custo_medio() -> None:
     item_id = client.get(f"/api/v1/compras/{pid}", headers=h).json()["items"][0]["id"]
 
     r1 = client.post(f"/api/v1/compras/{pid}/recebimento", headers=h, json={
+        "invoice_number": "NF-1",
         "items": [{"purchase_order_item_id": item_id, "received_quantity": "4", "unit_cost": "3"}],
     })
     assert r1.status_code == 200, r1.text
@@ -53,6 +54,7 @@ def test_recebimento_parcial_aplica_custo_medio() -> None:
     assert ins["stock_total"] == "4.00", ins
 
     r2 = client.post(f"/api/v1/compras/{pid}/recebimento", headers=h, json={
+        "invoice_number": "NF-2",
         "items": [{"purchase_order_item_id": item_id, "received_quantity": "6", "unit_cost": "3"}],
     })
     assert r2.status_code == 200
@@ -68,11 +70,39 @@ def test_recebimento_excede_quantidade_409() -> None:
     client.post(f"/api/v1/compras/{pid}/aprovar", headers=h)
     item_id = client.get(f"/api/v1/compras/{pid}", headers=h).json()["items"][0]["id"]
     ok = client.post(f"/api/v1/compras/{pid}/recebimento", headers=h, json={
+        "invoice_number": "NF-A",
         "items": [{"purchase_order_item_id": item_id, "received_quantity": "10", "unit_cost": "2"}],
     })
     assert ok.status_code == 200
     bad = client.post(f"/api/v1/compras/{pid}/recebimento", headers=h, json={
+        "invoice_number": "NF-B",
         "items": [{"purchase_order_item_id": item_id, "received_quantity": "1", "unit_cost": "2"}],
     })
     assert bad.status_code == 409
     assert bad.json()["code"] == "invalid_state"
+
+
+def test_recebimento_idempotente_por_invoice_number() -> None:
+    h = _auth("rec3")
+    sup = _supplier(h)
+    iid = _insumo(h, "Macarrão", "2", "0")
+    pid = _po(h, sup, iid)
+    client.post(f"/api/v1/compras/{pid}/aprovar", headers=h)
+    item_id = client.get(f"/api/v1/compras/{pid}", headers=h).json()["items"][0]["id"]
+    body = {
+        "invoice_number": "NF-42",
+        "items": [{"purchase_order_item_id": item_id, "received_quantity": "4", "unit_cost": "3"}],
+    }
+
+    r1 = client.post(f"/api/v1/compras/{pid}/recebimento", headers=h, json=body)
+    assert r1.status_code == 200, r1.text
+    q1 = r1.json()["items"][0]["received_quantity"]
+    assert r1.json()["status"] == "partially_received"
+
+    # retry idêntico: no-op — não duplica quantidade/estoque/custo
+    r2 = client.post(f"/api/v1/compras/{pid}/recebimento", headers=h, json=body)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["items"][0]["received_quantity"] == q1
+    ins = client.get(f"/api/v1/insumos/{iid}", headers=h).json()
+    assert ins["stock_total"] == "4.00", ins
+    assert ins["average_cost"] == "3.00", ins
