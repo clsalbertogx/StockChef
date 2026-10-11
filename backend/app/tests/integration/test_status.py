@@ -144,3 +144,29 @@ def test_rbac_transicoes() -> None:
     assert _patch(kitchen, oid, "preparing").status_code == 200
     _patch(kitchen, oid, "ready")
     assert _patch(kitchen, oid, "delivered").status_code == 403  # kitchen não entrega
+
+
+def test_ready_pode_concluir_direto() -> None:
+    slug = _register("st-ready-done")
+    owner = _login(slug, "owner")
+    oid = _order(slug, owner)
+    client.post(f"/api/v1/pedidos/{oid}/confirmar", headers=owner)
+    kitchen = _login(slug, "kitchen")
+    _patch(kitchen, oid, "preparing")
+    _patch(kitchen, oid, "ready")
+    assert _patch(owner, oid, "completed").status_code == 200
+    assert _patch(owner, oid, "completed").json()["status"] == "completed"
+
+
+def test_delivered_para_completed_so_owner_manager() -> None:
+    slug = _register("st-deliv-done")
+    owner = _login(slug, "owner")
+    oid = _order(slug, owner)
+    client.post(f"/api/v1/pedidos/{oid}/confirmar", headers=owner)
+    kitchen = _login(slug, "kitchen")
+    _patch(kitchen, oid, "preparing")
+    _patch(kitchen, oid, "ready")
+    cashier = _login(slug, "cashier")
+    assert _patch(cashier, oid, "delivered").status_code == 200
+    assert _patch(cashier, oid, "completed").status_code == 403  # cashier não conclui
+    assert _patch(owner, oid, "completed").status_code == 200
