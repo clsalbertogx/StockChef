@@ -29,6 +29,8 @@ class OrderItemOut(BaseModel):
     quantity: int
     unit_price: Decimal
     total_price: Decimal
+    notes: str | None = None
+    modifiers: list = []
 
 
 class OrderOut(BaseModel):
@@ -37,7 +39,13 @@ class OrderOut(BaseModel):
     status: str
     customer_name: str | None
     customer_phone: str | None
+    channel: str
+    fulfillment_type: str
+    expected_time: datetime | None
     subtotal: Decimal
+    delivery_fee: Decimal
+    discount_total: Decimal
+    tax_total: Decimal
     total: Decimal
     notes: str | None
     created_at: datetime

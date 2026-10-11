@@ -81,6 +81,8 @@ def _to_out(db: Session, order: Order) -> OrderOut:
                 quantity=it.quantity,
                 unit_price=it.unit_price,
                 total_price=it.total_price,
+                notes=it.notes,
+                modifiers=it.modifiers or [],
             )
         )
     cust = db.get(Customer, order.customer_id) if order.customer_id else None
@@ -90,7 +92,13 @@ def _to_out(db: Session, order: Order) -> OrderOut:
         status=order.status,
         customer_name=cust.name if cust else None,
         customer_phone=cust.phone if cust else None,
+        channel=order.channel,
+        fulfillment_type=order.fulfillment_type,
+        expected_time=order.expected_time,
         subtotal=order.subtotal,
+        delivery_fee=order.delivery_fee,
+        discount_total=order.discount_total,
+        tax_total=order.tax_total,
         total=order.total,
         notes=order.notes,
         created_at=order.created_at,
