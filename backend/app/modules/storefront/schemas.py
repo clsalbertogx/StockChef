@@ -50,3 +50,11 @@ class PublicMenuOut(BaseModel):
     store: PublicStoreOut
     categories: list[PublicCategoryOut]
     products: list[PublicProductOut]
+
+
+class DeliveryEstimateOut(BaseModel):
+    covered: bool
+    zone_name: str | None
+    delivery_fee: Decimal
+    min_order_value: Decimal
+    eta_minutes: int
