@@ -202,3 +202,97 @@ export interface KdsOrder {
   elapsed_minutes: number;
   items: KdsItem[];
 }
+
+export interface PublicModifier {
+  id: string;
+  group_name: string;
+  modifier_name: string;
+  price_delta: string;
+  required: boolean;
+  min_selection: number;
+  max_selection: number | null;
+}
+
+export interface PublicProduct {
+  id: string;
+  name: string;
+  description?: string | null;
+  price: string;
+  image_url?: string | null;
+  category_id?: string | null;
+  preparation_time_minutes: number;
+  modifiers: PublicModifier[];
+}
+
+export interface PublicCategory {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
+export interface PublicStore {
+  id: string;
+  name: string;
+  delivery_enabled: boolean;
+  pickup_enabled: boolean;
+}
+
+export interface PublicTenant {
+  name: string;
+  slug: string;
+}
+
+export interface PublicMenu {
+  tenant: PublicTenant;
+  store: PublicStore;
+  categories: PublicCategory[];
+  products: PublicProduct[];
+}
+
+export interface DeliveryEstimate {
+  covered: boolean;
+  zone_name: string | null;
+  delivery_fee: string;
+  min_order_value: string;
+  eta_minutes: number;
+}
+
+export interface PublicOrderItem {
+  product_name: string;
+  quantity: number;
+  unit_price: string;
+  total_price: string;
+  modifiers: { id: string; group_name: string; modifier_name: string; price_delta: string }[];
+}
+
+export interface PublicOrder {
+  code: string;
+  status: string;
+  fulfillment_type: string;
+  subtotal: string;
+  delivery_fee: string;
+  total: string;
+  eta_minutes: number | null;
+  created_at: string;
+  items: PublicOrderItem[];
+}
+
+export interface Zone {
+  id: string;
+  store_id: string;
+  name: string;
+  cep_ranges: { start: string; end: string }[];
+  delivery_fee: string;
+  min_order_value: string;
+  eta_minutes: number;
+  active: boolean;
+}
+
+export interface ZoneCreate {
+  name: string;
+  cep_start: string;
+  cep_end: string;
+  delivery_fee: string;
+  min_order_value: string;
+  eta_minutes: number;
+}
