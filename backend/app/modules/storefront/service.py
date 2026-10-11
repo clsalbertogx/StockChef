@@ -147,7 +147,14 @@ def _resolve_modifiers(
     ).all()
     by_id = {m.id: m for m in mods}
     chosen = []
+    seen: set[UUID] = set()
     for mid in modifier_ids:
+        if mid in seen:
+            raise DomainError(
+                "invalid_modifiers", "Adicional duplicado no pedido.",
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        seen.add(mid)
         mod = by_id.get(mid)
         if mod is None:
             raise DomainError(
@@ -188,6 +195,17 @@ def create_public_order(
     )
     if existing is not None:
         return db.get(Order, existing.order_id)  # type: ignore[return-value]
+
+    if payload.fulfillment_type == "delivery" and not store.delivery_enabled:
+        raise DomainError(
+            "fulfillment_unavailable", "Entrega não disponível para esta loja.",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+    if payload.fulfillment_type == "pickup" and not store.pickup_enabled:
+        raise DomainError(
+            "fulfillment_unavailable", "Retirada não disponível para esta loja.",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
 
     tid = tenant.id
     if payload.fulfillment_type == "delivery":
@@ -239,11 +257,17 @@ def create_public_order(
     address = payload.address or {}
     customer = _upsert_customer(db, tid, payload.customer_name, payload.customer_phone, address)
     total = (subtotal + delivery_fee).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if payload.scheduled_time:
+        expected = payload.scheduled_time
+    elif eta:
+        expected = datetime.now(UTC) + timedelta(minutes=eta)
+    else:
+        expected = None
     order = Order(
         tenant_id=tid, store_id=store.id, customer_id=customer.id, code=_gen_code(db, store.id),
         status="received", channel="own_pwa", fulfillment_type=payload.fulfillment_type,
         subtotal=subtotal, delivery_fee=delivery_fee, total=total, notes=payload.notes,
-        expected_time=datetime.now(UTC) + timedelta(minutes=eta) if eta else None,
+        expected_time=expected,
     )
     db.add(order)
     db.flush()
@@ -252,8 +276,15 @@ def create_public_order(
             tenant_id=tid, order_id=order.id, product_id=product.id, quantity=it.quantity,
             unit_price=unit, total_price=line, notes=it.notes,
             modifiers=[
-                {"id": str(m.id), "group_name": m.group_name,
-                 "modifier_name": m.modifier_name, "price_delta": str(m.price_delta)}
+                {
+                    "product_modifier_id": str(m.id),
+                    "group_name": m.group_name,
+                    "name": m.modifier_name,
+                    "price_delta": str(m.price_delta),
+                    "quantity": 1,
+                    "id": str(m.id),
+                    "modifier_name": m.modifier_name,
+                }
                 for m in chosen
             ],
             recipe_snapshot=_snapshot(db, product.id),

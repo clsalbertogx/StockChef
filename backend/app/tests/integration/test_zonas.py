@@ -53,3 +53,25 @@ def test_cep_normalizado_com_mascara() -> None:
         assert resolve_zone(db, store.id, "99999999") is None
     finally:
         db.close()
+
+
+def test_cep_range_start_maior_end_422() -> None:
+    """cep_ranges com start > end deve retornar 422."""
+    h = _owner("zona3")
+    r = client.post("/api/v1/zonas", headers=h, json={
+        "name": "Inválida", "cep_ranges": [{"start": "20999999", "end": "20000000"}],
+        "delivery_fee": "5.00",
+    })
+    assert r.status_code == 422, r.text
+    assert "start não pode ser maior que end" in r.text
+
+
+def test_cep_range_formato_invalido_422() -> None:
+    """cep_ranges com menos de 8 dígitos deve retornar 422."""
+    h = _owner("zona4")
+    r = client.post("/api/v1/zonas", headers=h, json={
+        "name": "Inválida", "cep_ranges": [{"start": "1234567", "end": "20000000"}],
+        "delivery_fee": "5.00",
+    })
+    assert r.status_code == 422, r.text
+    assert "8 dígitos" in r.text

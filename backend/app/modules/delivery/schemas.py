@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+def _norm(cep: str) -> str:
+    return re.sub(r"\D", "", cep)
 
 
 class CepRange(BaseModel):
-    start: str = Field(min_length=8, max_length=9)
-    end: str = Field(min_length=8, max_length=9)
+    start: str
+    end: str
+
+    @model_validator(mode="after")
+    def validate_ranges(self) -> CepRange:
+        s = _norm(self.start)
+        e = _norm(self.end)
+        if len(s) != 8 or len(e) != 8:
+            raise ValueError("CEP deve ter 8 dígitos")
+        if s > e:
+            raise ValueError("start não pode ser maior que end")
+        self.start = s
+        self.end = e
+        return self
 
 
 class ZoneCreate(BaseModel):

@@ -76,6 +76,7 @@ class PublicOrderCreate(BaseModel):
     cep: str | None = None
     address: dict | None = None
     notes: str | None = None
+    scheduled_time: datetime | None = None
     idempotency_key: str = Field(min_length=8, max_length=64)
     items: list[PublicOrderItemIn] = Field(min_length=1)
 

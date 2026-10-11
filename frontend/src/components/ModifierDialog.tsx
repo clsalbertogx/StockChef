@@ -27,7 +27,7 @@ export default function ModifierDialog({ product, onConfirm, onCancel }: Props) 
     setSelected((sel) => {
       const groupMods = product.modifiers.filter((m) => m.group_name === mod.group_name);
       const maxes = groupMods.map((m) => m.max_selection).filter((v): v is number => v !== null);
-      const groupMax = maxes.length ? Math.min(...maxes) : 1;
+      const groupMax = maxes.length ? Math.min(...maxes) : Number.POSITIVE_INFINITY;
       const inGroup = sel.filter((id) => groupMods.some((gm) => gm.id === id));
       if (sel.includes(mod.id)) return sel.filter((id) => id !== mod.id);
       if (inGroup.length >= groupMax) {

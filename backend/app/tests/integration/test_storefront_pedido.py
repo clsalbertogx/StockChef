@@ -91,3 +91,109 @@ def test_adicional_invalido_422() -> None:
         },
     ], idempotency_key="chave-mod-0001"))
     assert r.status_code == 422 and r.json()["code"] == "invalid_modifiers"
+
+
+def test_delivery_desabilitada_422_fulfillment_unavailable() -> None:
+    """Loja com delivery_enabled=False deve recusar pedido delivery."""
+    from sqlalchemy import select
+
+    from app.core.db import SessionLocal, set_tenant
+    from app.modules.catalog.models import Store
+    from app.modules.identity.models import Tenant
+
+    h, pid = _seed("pub7")
+    db = SessionLocal()
+    try:
+        t = db.scalar(select(Tenant).where(Tenant.slug == "pub7"))
+        assert t is not None
+        set_tenant(db, t.id)
+        store = db.scalar(select(Store).where(Store.tenant_id == t.id, Store.status == "active"))
+        if store:
+            store.delivery_enabled = False
+            db.commit()
+    finally:
+        db.close()
+
+    r = client.post("/api/v1/public/pub7/pedidos", json=_body(
+        pid, idempotency_key="chave-del-dis-0001",
+    ))
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "fulfillment_unavailable"
+
+
+def test_pickup_desabilitada_422_fulfillment_unavailable() -> None:
+    """Loja com pickup_enabled=False deve recusar pedido pickup."""
+    from sqlalchemy import select
+
+    from app.core.db import SessionLocal, set_tenant
+    from app.modules.catalog.models import Store
+    from app.modules.identity.models import Tenant
+
+    h, pid = _seed("pub8")
+    db = SessionLocal()
+    try:
+        t = db.scalar(select(Tenant).where(Tenant.slug == "pub8"))
+        assert t is not None
+        set_tenant(db, t.id)
+        store = db.scalar(select(Store).where(Store.tenant_id == t.id, Store.status == "active"))
+        if store:
+            store.pickup_enabled = False
+            db.commit()
+    finally:
+        db.close()
+
+    r = client.post("/api/v1/public/pub8/pedidos", json=_body(
+        pid, fulfillment_type="pickup", cep=None, address=None,
+        idempotency_key="chave-pick-dis-0001",
+    ))
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "fulfillment_unavailable"
+
+
+def test_scheduled_time_respeitado() -> None:
+    """Pedido com scheduled_time deve ter expected_time = scheduled_time."""
+    from datetime import UTC, datetime, timedelta
+
+    _h, pid = _seed("pub9")
+    scheduled = (datetime.now(UTC) + timedelta(minutes=120)).isoformat()
+    r = client.post("/api/v1/public/pub9/pedidos", json=_body(
+        pid, scheduled_time=scheduled, idempotency_key="chave-sched-0001",
+    ))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["eta_minutes"] is not None and body["eta_minutes"] >= 115
+
+
+def test_modificadores_duplicados_422() -> None:
+    """Duplicar modifier_ids no mesmo item deve falhar com invalid_modifiers."""
+    _h, pid = _seed("pub10")
+    r = client.post("/api/v1/public/pub10/pedidos", json={
+        "customer_name": "Ana", "customer_phone": "11999999999",
+        "fulfillment_type": "delivery", "cep": "01001000",
+        "address": {"street": "Sé", "number": "1", "district": "Sé", "city": "SP", "state": "SP"},
+        "idempotency_key": "chave-dup-0001",
+        "items": [{
+            "product_id": pid,
+            "quantity": 1,
+            "modifier_ids": ["00000000-0000-0000-0000-000000000001",
+                           "00000000-0000-0000-0000-000000000001"],
+        }],
+    })
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "invalid_modifiers"
+
+
+def test_produto_cross_tenant_404() -> None:
+    """Produto de outro tenant não deve ser acessível no cardápio/pedido."""
+    h1, pid1 = _seed("pub11a")
+    _h2, pid2 = _seed("pub11b")
+
+    r = client.post("/api/v1/public/pub11a/pedidos", json={
+        "customer_name": "Ana", "customer_phone": "11999999999",
+        "fulfillment_type": "delivery", "cep": "01001000",
+        "address": {"street": "Sé", "number": "1", "district": "Sé", "city": "SP", "state": "SP"},
+        "idempotency_key": "chave-cross-0001",
+        "items": [{"product_id": pid2, "quantity": 1, "modifier_ids": []}],
+    })
+    assert r.status_code == 404, r.text
+    assert r.json()["code"] == "product_not_found"

@@ -106,6 +106,7 @@ export default function CheckoutPage() {
   const total = subtotal + fee;
   const minOrder = Number(estimate?.min_order_value ?? 0);
   const abaixoMinimo = fulfillment === "delivery" && subtotal < minOrder;
+  const uncovered = fulfillment === "delivery" && estimate !== null && !estimate.covered;
 
   return (
     <main className="mx-auto max-w-2xl space-y-4 p-4">
@@ -231,7 +232,7 @@ export default function CheckoutPage() {
 
         <button
           type="submit"
-          disabled={sending || lines.length === 0 || abaixoMinimo}
+          disabled={sending || lines.length === 0 || abaixoMinimo || uncovered}
           className="w-full rounded bg-blue-600 px-4 py-3 text-white disabled:opacity-50"
         >
           {sending ? "Enviando…" : "Finalizar pedido"}
