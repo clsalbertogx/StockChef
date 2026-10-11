@@ -23,12 +23,29 @@ class OrderCreate(BaseModel):
     channel: Literal["own_pwa", "whatsapp", "phone", "pos", "marketplace_future"] = "own_pwa"
 
 
+OrderStatus = Literal[
+    "received", "confirmed", "confirmed_pending_stock", "preparing", "ready",
+    "out_for_delivery", "delivered", "completed", "cancelled", "refunded",
+]
+
+
+class OrderStatusUpdate(BaseModel):
+    status: OrderStatus
+    notes: str | None = None
+
+
+class OrderCancel(BaseModel):
+    motivo: str = Field(min_length=1)
+
+
 class OrderItemOut(BaseModel):
     product_id: UUID
     product_name: str
     quantity: int
     unit_price: Decimal
     total_price: Decimal
+    notes: str | None = None
+    modifiers: list = []
 
 
 class OrderOut(BaseModel):
@@ -37,8 +54,34 @@ class OrderOut(BaseModel):
     status: str
     customer_name: str | None
     customer_phone: str | None
+    channel: str
+    fulfillment_type: str
+    expected_time: datetime | None
     subtotal: Decimal
+    delivery_fee: Decimal
+    discount_total: Decimal
+    tax_total: Decimal
     total: Decimal
     notes: str | None
     created_at: datetime
     order_items: list[OrderItemOut]
+
+
+class KitchenItemOut(BaseModel):
+    order_item_id: UUID
+    product_name: str
+    quantity: int
+    notes: str | None = None
+    modifiers: list = []
+
+
+class KitchenOrderOut(BaseModel):
+    order_id: UUID
+    code: str
+    status: str
+    channel: str
+    fulfillment_type: str
+    notes: str | None
+    created_at: datetime
+    elapsed_minutes: int
+    items: list[KitchenItemOut]

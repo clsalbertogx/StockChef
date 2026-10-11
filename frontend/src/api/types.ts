@@ -48,6 +48,8 @@ export interface PedidoItem {
   quantity: number;
   unit_price: string;
   total_price: string;
+  notes?: string | null;
+  modifiers?: unknown[];
 }
 
 export interface Pedido {
@@ -56,7 +58,13 @@ export interface Pedido {
   status: string;
   customer_name?: string | null;
   customer_phone?: string | null;
+  channel: string;
+  fulfillment_type: string;
+  expected_time?: string | null;
   subtotal: string;
+  delivery_fee: string;
+  discount_total: string;
+  tax_total: string;
   total: string;
   notes?: string | null;
   created_at: string;
@@ -174,3 +182,23 @@ export const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelado",
   refunded: "Reembolsado",
 };
+
+export interface KdsItem {
+  order_item_id: string;
+  product_name: string;
+  quantity: number;
+  notes?: string | null;
+  modifiers: unknown[];
+}
+
+export interface KdsOrder {
+  order_id: string;
+  code: string;
+  status: string;
+  channel: string;
+  fulfillment_type: string;
+  notes?: string | null;
+  created_at: string;
+  elapsed_minutes: number;
+  items: KdsItem[];
+}

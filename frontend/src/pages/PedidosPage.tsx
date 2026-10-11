@@ -7,6 +7,7 @@ export default function PedidosPage() {
   const { data: pedidos = [] } = useQuery<Pedido[]>({
     queryKey: ["pedidos"],
     queryFn: () => api<Pedido[]>("/pedidos"),
+    refetchInterval: 5000,
   });
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-8">
@@ -19,6 +20,7 @@ export default function PedidosPage() {
             <th>Itens</th>
             <th>Total</th>
             <th>Status</th>
+            <th>Comanda</th>
           </tr>
         </thead>
         <tbody>
@@ -33,6 +35,11 @@ export default function PedidosPage() {
               <td>{p.order_items.reduce((acc, it) => acc + it.quantity, 0)}</td>
               <td>R$ {Number(p.total).toFixed(2)}</td>
               <td>{STATUS_LABEL[p.status] ?? p.status}</td>
+              <td>
+                <Link to={`/pedidos/${p.id}/comanda`} className="text-blue-600">
+                  Comanda
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>

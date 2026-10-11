@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,16 +9,38 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_tenant_db
+from app.core.deps import current_actor, get_tenant_db, require_roles
 from app.core.errors import DomainError
-from app.modules.catalog.models import Product, Store
+from app.core.tenant import Actor
+from app.modules.catalog.models import Product, StockMovement, Store
 from app.modules.catalog.service import default_store
+from app.modules.inventory.service import apply_movement, ensure_stock_level
 from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent
 from app.modules.orders.outbox import drain_outbox
-from app.modules.orders.schemas import OrderCreate, OrderItemOut, OrderOut
+from app.modules.orders.schemas import (
+    KitchenItemOut,
+    KitchenOrderOut,
+    OrderCancel,
+    OrderCreate,
+    OrderItemOut,
+    OrderOut,
+    OrderStatusUpdate,
+)
 from app.modules.orders.service import availability, availability_ok, recipe_snapshot
 
 router = APIRouter(tags=["pedidos"])
+
+TRANSITIONS: dict[tuple[str, str], frozenset[str]] = {
+    ("confirmed", "preparing"): frozenset({"kitchen", "manager", "owner"}),
+    ("confirmed_pending_stock", "preparing"): frozenset({"kitchen", "manager", "owner"}),
+    ("preparing", "ready"): frozenset({"kitchen", "manager", "owner"}),
+    ("ready", "delivered"): frozenset({"cashier", "manager", "owner"}),
+    ("ready", "completed"): frozenset({"cashier", "manager", "owner"}),
+    ("delivered", "completed"): frozenset({"owner", "manager"}),
+}
+
+CANCELLABLE = ("received", "confirmed", "confirmed_pending_stock", "preparing", "ready")
+CANCEL_BLOCKED = ("delivered", "completed", "refunded")
 
 
 def _tenant_id(db: Session) -> UUID:
@@ -81,6 +104,8 @@ def _to_out(db: Session, order: Order) -> OrderOut:
                 quantity=it.quantity,
                 unit_price=it.unit_price,
                 total_price=it.total_price,
+                notes=it.notes,
+                modifiers=it.modifiers or [],
             )
         )
     cust = db.get(Customer, order.customer_id) if order.customer_id else None
@@ -90,7 +115,13 @@ def _to_out(db: Session, order: Order) -> OrderOut:
         status=order.status,
         customer_name=cust.name if cust else None,
         customer_phone=cust.phone if cust else None,
+        channel=order.channel,
+        fulfillment_type=order.fulfillment_type,
+        expected_time=order.expected_time,
         subtotal=order.subtotal,
+        delivery_fee=order.delivery_fee,
+        discount_total=order.discount_total,
+        tax_total=order.tax_total,
         total=order.total,
         notes=order.notes,
         created_at=order.created_at,
@@ -227,6 +258,44 @@ def confirm_order(
     return _to_out(db, order)
 
 
+@router.patch("/pedidos/{order_id}/status")
+def update_order_status(
+    order_id: UUID,
+    payload: OrderStatusUpdate,
+    actor: Actor = Depends(current_actor),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> OrderOut:
+    tid = _tenant_id(db)
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if order is None:
+        raise DomainError("not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND)
+    if payload.status == order.status:
+        return _to_out(db, order)  # no-op idempotente
+    roles = TRANSITIONS.get((order.status, payload.status))
+    if roles is None:
+        raise DomainError(
+            "invalid_state", "Transição de status inválida.", status.HTTP_409_CONFLICT
+        )
+    if actor.role not in roles:
+        raise DomainError("forbidden", "Permissão insuficiente.", status.HTTP_403_FORBIDDEN)
+    old = order.status
+    order.status = payload.status
+    order.updated_at = datetime.now(UTC)
+    db.add(
+        OrderEvent(
+            tenant_id=tid,
+            order_id=order.id,
+            event_type="status.changed",
+            from_status=old,
+            to_status=payload.status,
+            user_id=actor.id,
+            payload={"notes": payload.notes} if payload.notes else {},
+        )
+    )
+    db.commit()
+    return _to_out(db, order)
+
+
 @router.get("/pedidos/{order_id}/eventos")
 def order_events(order_id: UUID, db: Session = Depends(get_tenant_db)) -> dict:  # noqa: B008
     order = db.get(Order, order_id)
@@ -251,3 +320,112 @@ def order_events(order_id: UUID, db: Session = Depends(get_tenant_db)) -> dict: 
             for e in events
         ],
     }
+
+
+@router.post("/pedidos/{order_id}/cancelar")
+def cancel_order(
+    order_id: UUID,
+    payload: OrderCancel,
+    actor: Actor = Depends(current_actor),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> OrderOut:
+    tid = _tenant_id(db)
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if order is None:
+        raise DomainError("not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND)
+    if order.status == "cancelled":
+        return _to_out(db, order)  # idempotente
+    if order.status in CANCEL_BLOCKED or order.status not in CANCELLABLE:
+        raise DomainError(
+            "invalid_state", "Pedido não pode ser cancelado nesse estado.",
+            status.HTTP_409_CONFLICT,
+        )
+    if actor.role not in ("owner", "manager", "cashier"):
+        raise DomainError("forbidden", "Permissão insuficiente.", status.HTTP_403_FORBIDDEN)
+
+    sales = db.scalars(
+        select(StockMovement).where(
+            StockMovement.reference_type == "order",
+            StockMovement.reference_id == order.id,
+            StockMovement.type == "sale",
+        )
+    ).all()
+    for mov in sales:
+        ensure_stock_level(
+            db, tenant_id=tid, store_id=order.store_id, ingredient_id=mov.ingredient_id
+        )
+        apply_movement(
+            db,
+            tenant_id=tid,
+            store_id=order.store_id,
+            ingredient_id=mov.ingredient_id,
+            type_="reversal",
+            quantity=abs(mov.quantity),
+            unit_cost=mov.unit_cost,
+            reference_type="order",
+            reference_id=order.id,
+            reason="Cancelamento de pedido",
+            idempotency_key=f"order.reversed:{order.id}:{mov.ingredient_id}",
+            user_id=actor.id,
+        )
+
+    old = order.status
+    order.status = "cancelled"
+    order.updated_at = datetime.now(UTC)
+    db.add(OrderEvent(tenant_id=tid, order_id=order.id, event_type="status.changed",
+                      from_status=old, to_status="cancelled", user_id=actor.id))
+    db.add(OrderEvent(tenant_id=tid, order_id=order.id, event_type="order.cancelled",
+                      from_status=old, to_status="cancelled", user_id=actor.id,
+                      payload={"motivo": payload.motivo}))
+    db.commit()
+    return _to_out(db, order)
+
+
+KDS_STATUSES = ("confirmed", "confirmed_pending_stock", "preparing")
+
+
+@router.get("/cozinha/fila")
+def kitchen_queue(
+    actor: Actor = Depends(require_roles("kitchen", "manager", "owner")),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> list[KitchenOrderOut]:
+    tid = _tenant_id(db)
+    orders = db.scalars(
+        select(Order)
+        .where(Order.tenant_id == tid, Order.status.in_(KDS_STATUSES))
+        .order_by(Order.created_at.asc())
+    ).all()
+    if not orders:
+        return []
+    order_ids = [o.id for o in orders]
+    rows = db.execute(
+        select(OrderItem, Product.name)
+        .join(Product, Product.id == OrderItem.product_id)
+        .where(OrderItem.order_id.in_(order_ids))
+    ).all()
+    by_order: dict[UUID, list[KitchenItemOut]] = {}
+    for item, product_name in rows:
+        by_order.setdefault(item.order_id, []).append(
+            KitchenItemOut(
+                order_item_id=item.id,
+                product_name=product_name,
+                quantity=item.quantity,
+                notes=item.notes,
+                modifiers=item.modifiers or [],
+            )
+        )
+    now = datetime.now(UTC)
+    return [
+        KitchenOrderOut(
+            order_id=o.id,
+            code=o.code,
+            status=o.status,
+            channel=o.channel,
+            fulfillment_type=o.fulfillment_type,
+            notes=o.notes,
+            created_at=o.created_at,
+            elapsed_minutes=max(0, int((now - o.created_at).total_seconds() // 60)),
+            items=by_order.get(o.id, []),
+        )
+        for o in orders
+    ]

@@ -1,9 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import ComandaPage from "./pages/ComandaPage";
 import ComprasDetalhePage from "./pages/ComprasDetalhePage";
 import ComprasPage from "./pages/ComprasPage";
 import DashboardPage from "./pages/DashboardPage";
 import EstoquePage from "./pages/EstoquePage";
+import FilaKdsPage from "./pages/FilaKdsPage";
 import FornecedoresPage from "./pages/FornecedoresPage";
 import InsumosPage from "./pages/InsumosPage";
 import InventarioPage from "./pages/InventarioPage";
@@ -97,10 +99,26 @@ export default function App() {
             }
           />
           <Route
+            path="/pedidos/:id/comanda"
+            element={
+              <Protected>
+                <ComandaPage />
+              </Protected>
+            }
+          />
+          <Route
             path="/pedidos/:id"
             element={
               <Protected>
                 <PedidoDetalhePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/cozinha"
+            element={
+              <Protected>
+                <FilaKdsPage />
               </Protected>
             }
           />
