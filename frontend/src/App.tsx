@@ -18,6 +18,7 @@ import CardapioPage from "./pages/public/CardapioPage";
 import CarrinhoPage from "./pages/public/CarrinhoPage";
 import CheckoutPage from "./pages/public/CheckoutPage";
 import PedidoPublicoPage from "./pages/public/PedidoPublicoPage";
+import ZonasPage from "./pages/ZonasPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -124,6 +125,14 @@ export default function App() {
             element={
               <Protected>
                 <FilaKdsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/zonas"
+            element={
+              <Protected>
+                <ZonasPage />
               </Protected>
             }
           />

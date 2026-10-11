@@ -39,6 +39,9 @@ export default function DashboardPage() {
         <Link to="/cozinha" className="rounded border px-4 py-2">
           Cozinha
         </Link>
+        <Link to="/zonas" className="rounded border px-4 py-2">
+          Entregas
+        </Link>
       </nav>
       <p className="mb-64 text-gray-600">
         Vertical slice: insumo → produto → pedido → baixa → margem.
