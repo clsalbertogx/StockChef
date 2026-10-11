@@ -174,3 +174,23 @@ export const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelado",
   refunded: "Reembolsado",
 };
+
+export interface KdsItem {
+  order_item_id: string;
+  product_name: string;
+  quantity: number;
+  notes?: string | null;
+  modifiers: unknown[];
+}
+
+export interface KdsOrder {
+  order_id: string;
+  code: string;
+  status: string;
+  channel: string;
+  fulfillment_type: string;
+  notes?: string | null;
+  created_at: string;
+  elapsed_minutes: number;
+  items: KdsItem[];
+}

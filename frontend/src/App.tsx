@@ -4,6 +4,7 @@ import ComprasDetalhePage from "./pages/ComprasDetalhePage";
 import ComprasPage from "./pages/ComprasPage";
 import DashboardPage from "./pages/DashboardPage";
 import EstoquePage from "./pages/EstoquePage";
+import FilaKdsPage from "./pages/FilaKdsPage";
 import FornecedoresPage from "./pages/FornecedoresPage";
 import InsumosPage from "./pages/InsumosPage";
 import InventarioPage from "./pages/InventarioPage";
@@ -101,6 +102,14 @@ export default function App() {
             element={
               <Protected>
                 <PedidoDetalhePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/cozinha"
+            element={
+              <Protected>
+                <FilaKdsPage />
               </Protected>
             }
           />
