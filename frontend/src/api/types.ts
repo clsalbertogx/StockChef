@@ -71,6 +71,97 @@ export interface Evento {
   outbox_status?: string | null;
 }
 
+export interface Supplier {
+  id: string;
+  name: string;
+  lead_time_days: number;
+  status: "active" | "inactive" | "archived";
+}
+
+export interface LossIn {
+  ingredient_id: string;
+  quantity: string;
+  reason: string;
+}
+
+export interface CriticalStockItem {
+  ingredient_id: string;
+  name: string;
+  unit_symbol: string;
+  stock_total: string;
+  minimum_stock: string;
+}
+
+export interface MovementOut {
+  id: string;
+  ingredient_id: string;
+  type: string;
+  quantity: string;
+  unit_cost: string;
+  reason?: string | null;
+  created_at: string;
+}
+
+export interface InventoryCountItemOut {
+  ingredient_id: string;
+  system_quantity: string;
+  counted_quantity?: string | null;
+  difference?: string | null;
+  adjusted: boolean;
+}
+
+export interface InventoryCount {
+  id: string;
+  store_id: string;
+  status: string;
+  started_at: string;
+  closed_at?: string | null;
+  items: InventoryCountItemOut[];
+}
+
+export interface PurchaseSuggestion {
+  ingredient_id: string;
+  name: string;
+  unit_symbol: string;
+  stock_total: string;
+  minimum_stock: string;
+  consumption_daily: string;
+  lead_time_days: number;
+  suggested_quantity: string;
+  reason: string;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  ingredient_id: string;
+  quantity: string;
+  unit_cost: string;
+  received_quantity: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  supplier_id: string;
+  status: string;
+  expected_date?: string | null;
+  total_amount: string;
+  created_at: string;
+  items: PurchaseOrderItem[];
+}
+
+export const PO_STATUS_LABEL: Record<string, string> = {
+  draft: "Rascunho",
+  sent: "Enviado",
+  partially_received: "Recebido parcial",
+  received: "Recebido",
+  canceled: "Cancelado",
+};
+
+export const COUNT_STATUS_LABEL: Record<string, string> = {
+  open: "Aberta",
+  closed: "Fechada",
+};
+
 export const STATUS_LABEL: Record<string, string> = {
   received: "Recebido",
   confirmed: "Confirmado",

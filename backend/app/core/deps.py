@@ -30,3 +30,12 @@ def get_tenant_db(
 ) -> Iterator[Session]:
     set_tenant(db, actor.tenant_id)
     yield db
+
+
+def require_roles(*roles: str):
+    def checker(actor: Actor = Depends(current_actor)) -> Actor:  # noqa: B008
+        if actor.role not in roles:
+            raise DomainError("forbidden", "Permissão insuficiente.", status.HTTP_403_FORBIDDEN)
+        return actor
+
+    return checker
