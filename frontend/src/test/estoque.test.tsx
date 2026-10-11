@@ -62,6 +62,29 @@ describe("EstoquePage", () => {
         expect.objectContaining({ method: "POST" }),
       ),
     );
-    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+  });
+
+  it("mostra erro quando críticos falham em vez de empty state", async () => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u === "/api/v1/insumos") return jsonResponse([insumo]);
+      if (u === "/api/v1/estoque/critico") return jsonResponse({ detail: "boom" }, 500);
+      if (u === "/api/v1/estoque/movimentos") return jsonResponse({ detail: "boom" }, 500);
+      throw new Error(`fetch inesperado: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <EstoquePage />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Erro ao carregar críticos.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
+    expect(screen.queryByText("Nenhum insumo abaixo do mínimo.")).not.toBeInTheDocument();
   });
 });

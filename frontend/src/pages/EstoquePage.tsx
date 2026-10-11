@@ -13,17 +13,31 @@ const REASONS = [
   ["other", "Outro"],
 ] as const;
 
+const MOVEMENT_TYPE: Record<string, string> = {
+  loss: "Perda",
+  adjustment: "Ajuste",
+  purchase: "Compra",
+};
+
 export default function EstoquePage() {
   const qc = useQueryClient();
-  const { data: insumos = [] } = useQuery<Insumo[]>({
+  const { data: insumos = [], isError: insumosError } = useQuery<Insumo[]>({
     queryKey: ["insumos"],
     queryFn: () => api<Insumo[]>("/insumos"),
   });
-  const { data: criticos = [] } = useQuery<CriticalStockItem[]>({
+  const {
+    data: criticos = [],
+    isPending: criticosLoading,
+    isError: criticosError,
+  } = useQuery<CriticalStockItem[]>({
     queryKey: ["estoque-critico"],
     queryFn: () => api<CriticalStockItem[]>("/estoque/critico"),
   });
-  const { data: movimentos = [] } = useQuery<MovementOut[]>({
+  const {
+    data: movimentos = [],
+    isPending: movimentosLoading,
+    isError: movimentosError,
+  } = useQuery<MovementOut[]>({
     queryKey: ["movimentos"],
     queryFn: () => api<MovementOut[]>("/estoque/movimentos"),
   });
@@ -58,21 +72,38 @@ export default function EstoquePage() {
     <main className="mx-auto max-w-5xl space-y-6 p-8">
       <h1 className="text-2xl font-semibold">Estoque</h1>
       {aviso && (
-        <p role="alert" className={`text-sm ${perda.isError ? "text-red-600" : "text-green-700"}`}>
+        <p
+          role={perda.isError ? "alert" : "status"}
+          className={`text-sm ${perda.isError ? "text-red-600" : "text-green-700"}`}
+        >
+          {perda.isError && (
+            <span aria-hidden="true" className="mr-1">
+              ⚠
+            </span>
+          )}
           {aviso}
         </p>
       )}
 
       <section className="space-y-2 rounded border p-4">
         <h2 className="font-semibold">Críticos (abaixo do mínimo)</h2>
-        {criticos.length === 0 ? (
+        {criticosError ? (
+          <p role="alert" className="text-sm text-red-600">
+            <span aria-hidden="true" className="mr-1">
+              ⚠
+            </span>
+            Erro ao carregar críticos.
+          </p>
+        ) : criticosLoading ? (
+          <p className="text-sm text-gray-600">Carregando…</p>
+        ) : criticos.length === 0 ? (
           <p className="text-sm text-gray-600">Nenhum insumo abaixo do mínimo.</p>
         ) : (
           <ul className="text-sm">
             {criticos.map((c) => (
               <li key={c.ingredient_id} className="flex justify-between">
                 <span>{c.name}</span>
-                <span>
+                <span className="tabular-nums">
                   {c.stock_total} {c.unit_symbol} / mínimo {c.minimum_stock}
                 </span>
               </li>
@@ -83,6 +114,14 @@ export default function EstoquePage() {
 
       <section className="space-y-4 rounded border p-4">
         <h2 className="font-semibold">Registrar perda</h2>
+        {insumosError && (
+          <p role="alert" className="text-sm text-red-600">
+            <span aria-hidden="true" className="mr-1">
+              ⚠
+            </span>
+            Erro ao carregar insumos.
+          </p>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -151,23 +190,43 @@ export default function EstoquePage() {
                 Tipo
               </th>
               <th scope="col">Quantidade</th>
+              <th scope="col">Custo unit.</th>
               <th scope="col">Motivo</th>
             </tr>
           </thead>
           <tbody>
-            {movimentos.slice(0, 20).map((m) => (
-              <tr key={m.id} className="border-t">
-                <td className="py-2">{m.type}</td>
-                <td>{m.quantity}</td>
-                <td>{m.reason ?? "—"}</td>
-              </tr>
-            ))}
-            {movimentos.length === 0 && (
+            {movimentosError ? (
               <tr>
-                <td className="py-2">Sem movimentos.</td>
-                <td />
-                <td />
+                <td colSpan={4} className="py-2">
+                  <span role="alert" className="text-red-600">
+                    <span aria-hidden="true" className="mr-1">
+                      ⚠
+                    </span>
+                    Erro ao carregar movimentos.
+                  </span>
+                </td>
               </tr>
+            ) : movimentosLoading ? (
+              <tr>
+                <td colSpan={4} className="py-2 text-gray-600">
+                  Carregando…
+                </td>
+              </tr>
+            ) : movimentos.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-2">
+                  Sem movimentos.
+                </td>
+              </tr>
+            ) : (
+              movimentos.slice(0, 20).map((m) => (
+                <tr key={m.id} className="border-t">
+                  <td className="py-2">{MOVEMENT_TYPE[m.type] ?? m.type}</td>
+                  <td className="tabular-nums">{m.quantity}</td>
+                  <td className="tabular-nums">R$ {Number(m.unit_cost).toFixed(2)}</td>
+                  <td>{m.reason ?? "—"}</td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>

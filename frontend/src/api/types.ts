@@ -97,6 +97,7 @@ export interface MovementOut {
   ingredient_id: string;
   type: string;
   quantity: string;
+  unit_cost: string;
   reason?: string | null;
   created_at: string;
 }
