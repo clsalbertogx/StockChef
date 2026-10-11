@@ -8,7 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.core.db import SessionLocal, engine, Base
+from app.core.db import Base, SessionLocal, engine
 from app.modules.catalog.models import (
     Category,
     Ingredient,
@@ -23,7 +23,6 @@ from app.modules.delivery.models import Zone
 from app.modules.identity.models import Tenant, User
 from app.modules.identity.security import hash_password
 from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, Payment
-
 
 DEMO_SLUG = "demo"
 DEMO_EMAIL = "dono@demo.example"
@@ -43,9 +42,13 @@ def _unit(db, tenant_id: UUID, symbol: str, name: str, type_: str) -> Unit:
     return u
 
 
-def _ingredient(db, tenant_id: UUID, unit_id: UUID, name: str, cost: str, min_stock: str = "5") -> Ingredient:
+def _ingredient(
+    db, tenant_id: UUID, unit_id: UUID, name: str, cost: str, min_stock: str = "5"
+) -> Ingredient:
     ing = db.scalar(
-        select(Ingredient).where(Ingredient.tenant_id == tenant_id, Ingredient.name == name)
+        select(Ingredient).where(
+            Ingredient.tenant_id == tenant_id, Ingredient.name == name
+        )
     )
     if ing is None:
         ing = Ingredient(
@@ -84,7 +87,9 @@ def main() -> None:
         set_tenant(db, tenant.id)
 
         # --- Store ---
-        store = db.scalar(select(Store).where(Store.tenant_id == tenant.id, Store.status == "active"))
+        store = db.scalar(
+            select(Store).where(Store.tenant_id == tenant.id, Store.status == "active")
+        )
         if store is None:
             store = Store(tenant_id=tenant.id, name=DEMO_STORE_NAME, status="active")
             db.add(store)
@@ -97,8 +102,8 @@ def main() -> None:
         un_kg = _unit(db, tenant.id, "kg", "Quilograma", "mass")
         un_g = _unit(db, tenant.id, "g", "Grama", "mass")
         un_un = _unit(db, tenant.id, "un", "Unidade", "count")
-        un_ml = _unit(db, tenant.id, "ml", "Mililitro", "volume")
-        un_l = _unit(db, tenant.id, "l", "Litro", "volume")
+        _ = _unit(db, tenant.id, "ml", "Mililitro", "volume")
+        _ = _unit(db, tenant.id, "l", "Litro", "volume")
 
         # --- Ingredients ---
         pao = _ingredient(db, tenant.id, un_un.id, "Pão brioche", "1.50", "20")
@@ -109,14 +114,20 @@ def main() -> None:
         molho = _ingredient(db, tenant.id, un_kg.id, "Molho especial", "12.00", "1")
 
         # --- Category ---
-        cat = db.scalar(select(Category).where(Category.tenant_id == tenant.id, Category.name == "Hambúrgueres"))
+        cat = db.scalar(
+            select(Category).where(
+                Category.tenant_id == tenant.id, Category.name == "Hambúrgueres"
+            )
+        )
         if cat is None:
             cat = Category(tenant_id=tenant.id, name="Hambúrgueres", sort_order=1, active=True)
             db.add(cat)
             db.flush()
 
         # --- Product X-Burger ---
-        product = db.scalar(select(Product).where(Product.store_id == store.id, Product.name == "X-Burger"))
+        product = db.scalar(
+            select(Product).where(Product.store_id == store.id, Product.name == "X-Burger")
+        )
         if product is None:
             product = Product(
                 tenant_id=tenant.id,
@@ -248,14 +259,22 @@ def main() -> None:
 
         # --- Demo Order (confirmed) ---
         demo_customer = db.scalar(
-            select(Customer).where(Customer.tenant_id == tenant.id, Customer.phone == "11999999999")
+            select(Customer).where(
+                Customer.tenant_id == tenant.id, Customer.phone == "11999999999"
+            )
         )
         if demo_customer is None:
             demo_customer = Customer(
                 tenant_id=tenant.id,
                 name="Cliente Demo",
                 phone="11999999999",
-                address={"street": "Rua Demo", "number": "123", "district": "Centro", "city": "SP", "state": "SP"},
+                address={
+                    "street": "Rua Demo",
+                    "number": "123",
+                    "district": "Centro",
+                    "city": "SP",
+                    "state": "SP",
+                },
             )
             db.add(demo_customer)
             db.flush()
