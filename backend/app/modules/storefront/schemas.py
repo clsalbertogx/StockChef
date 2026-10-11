@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ModifierOut(BaseModel):
@@ -58,3 +60,41 @@ class DeliveryEstimateOut(BaseModel):
     delivery_fee: Decimal
     min_order_value: Decimal
     eta_minutes: int
+
+
+class PublicOrderItemIn(BaseModel):
+    product_id: UUID
+    quantity: int = Field(ge=1)
+    notes: str | None = None
+    modifier_ids: list[UUID] = []
+
+
+class PublicOrderCreate(BaseModel):
+    customer_name: str = Field(min_length=1, max_length=120)
+    customer_phone: str = Field(min_length=8, max_length=20)
+    fulfillment_type: Literal["delivery", "pickup"] = "delivery"
+    cep: str | None = None
+    address: dict | None = None
+    notes: str | None = None
+    idempotency_key: str = Field(min_length=8, max_length=64)
+    items: list[PublicOrderItemIn] = Field(min_length=1)
+
+
+class PublicOrderItemOut(BaseModel):
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    total_price: Decimal
+    modifiers: list
+
+
+class PublicOrderOut(BaseModel):
+    code: str
+    status: str
+    fulfillment_type: str
+    subtotal: Decimal
+    delivery_fee: Decimal
+    total: Decimal
+    eta_minutes: int | None
+    created_at: datetime
+    items: list[PublicOrderItemOut]

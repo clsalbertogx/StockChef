@@ -11,10 +11,21 @@ from app.core.errors import DomainError
 from app.modules.delivery.models import Zone
 from app.modules.delivery.service import resolve_zone
 from app.modules.identity.models import Tenant
+from app.modules.orders.models import Order
 from app.modules.storefront import viacep
 from app.modules.storefront.deps import get_public_db
-from app.modules.storefront.schemas import DeliveryEstimateOut, PublicMenuOut
-from app.modules.storefront.service import current_store, public_menu
+from app.modules.storefront.schemas import (
+    DeliveryEstimateOut,
+    PublicMenuOut,
+    PublicOrderCreate,
+    PublicOrderOut,
+)
+from app.modules.storefront.service import (
+    create_public_order,
+    current_store,
+    public_menu,
+    public_order_out,
+)
 
 router = APIRouter(tags=["storefront"])
 
@@ -72,3 +83,25 @@ def get_entrega(
         covered=not has_zones, zone_name=None, delivery_fee=Decimal("0.00"),
         min_order_value=Decimal("0.00"), eta_minutes=30 if not has_zones else 0,
     )
+
+
+@router.post("/public/{slug}/pedidos", status_code=status.HTTP_201_CREATED)
+def create_pedido(
+    slug: str, payload: PublicOrderCreate, db: Session = Depends(get_public_db)  # noqa: B008
+) -> PublicOrderOut:
+    tid = db.info["tenant_id"]
+    tenant = db.get(Tenant, tid)
+    assert tenant is not None
+    store = current_store(db, tid)
+    order = create_public_order(db, tenant, store, payload)
+    return public_order_out(db, order)
+
+
+@router.get("/public/{slug}/pedidos/{code}")
+def get_pedido(
+    slug: str, code: str, db: Session = Depends(get_public_db)  # noqa: B008
+) -> PublicOrderOut:
+    order = db.scalar(select(Order).where(Order.code == code))
+    if order is None:
+        raise DomainError("not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND)
+    return public_order_out(db, order)
