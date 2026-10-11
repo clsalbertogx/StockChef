@@ -80,3 +80,33 @@ class RecipeOut(BaseModel):
     version: int
     items: list[RecipeItemOut]
     total_cost: Decimal
+
+
+class ModifierCreate(BaseModel):
+    group_name: str = Field(min_length=1, max_length=80)
+    modifier_name: str = Field(min_length=1, max_length=80)
+    price_delta: Decimal = Decimal("0")
+    required: bool = False
+    min_selection: int = Field(default=0, ge=0)
+    max_selection: int | None = Field(default=None, ge=0)
+
+
+class ModifierPatch(BaseModel):
+    group_name: str | None = None
+    modifier_name: str | None = None
+    price_delta: Decimal | None = None
+    required: bool | None = None
+    min_selection: int | None = Field(default=None, ge=0)
+    max_selection: int | None = Field(default=None, ge=0)
+    active: bool | None = None
+
+
+class ModifierOut(BaseModel):
+    id: UUID
+    group_name: str
+    modifier_name: str
+    price_delta: Decimal
+    required: bool
+    min_selection: int
+    max_selection: int | None
+    active: bool

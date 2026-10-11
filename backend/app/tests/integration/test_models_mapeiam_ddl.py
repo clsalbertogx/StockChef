@@ -6,9 +6,18 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal, set_tenant
 from app.main import app
-from app.modules.catalog.models import Ingredient, Store, Supplier, Unit
+from app.modules.catalog.models import (
+    Ingredient,
+    Product,
+    ProductModifier,
+    Store,
+    Supplier,
+    Unit,
+)
+from app.modules.delivery.models import Zone
 from app.modules.identity.models import Tenant
 from app.modules.inventory.models import InventoryCount, InventoryCountItem, Loss
+from app.modules.orders.models import Order, Payment
 from app.modules.purchasing.models import (
     GoodsReceipt,
     GoodsReceiptItem,
@@ -66,11 +75,29 @@ def test_models_mapeiam_ddl(tenant_id: str) -> None:
         db.add(GoodsReceiptItem(tenant_id=tenant_id, goods_receipt_id=gr.id,
                                 purchase_order_item_id=poi.id, ingredient_id=ing.id,
                                 quantity=Decimal("1"), unit_cost=Decimal("1")))
+
+        product = Product(tenant_id=tenant_id, store_id=store.id, name="Produto m",
+                          price=Decimal("10.00"))
+        db.add(product)
+        db.flush()
+        db.add(ProductModifier(tenant_id=tenant_id, product_id=product.id,
+                               group_name="Ponto", modifier_name="Ao ponto",
+                               price_delta=Decimal("0.00")))
+        db.add(Zone(tenant_id=tenant_id, store_id=store.id, name="Centro",
+                    cep_ranges=[{"start": "01000000", "end": "01999999"}]))
+        order = Order(tenant_id=tenant_id, store_id=store.id, code="SC-M1")
+        db.add(order)
+        db.flush()
+        db.add(Payment(tenant_id=tenant_id, order_id=order.id, provider="cash",
+                       method="cash", amount=Decimal("10.00")))
         db.commit()
 
         assert db.scalar(select(Loss).where(Loss.tenant_id == tenant_id)) is not None
         assert db.scalar(select(InventoryCountItem)) is not None
         assert db.scalar(select(PurchaseOrderItem)) is not None
         assert db.scalar(select(GoodsReceiptItem)) is not None
+        assert db.scalar(select(ProductModifier)) is not None
+        assert db.scalar(select(Zone)) is not None
+        assert db.scalar(select(Payment)) is not None
     finally:
         db.close()

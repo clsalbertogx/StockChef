@@ -13,6 +13,7 @@ from app.modules.catalog.costing import ingredient_cost, margin, recipe_cost
 from app.modules.catalog.models import (
     Ingredient,
     Product,
+    ProductModifier,
     Recipe,
     RecipeItem,
     StockLevel,
@@ -23,6 +24,9 @@ from app.modules.catalog.schemas import (
     IngredientCreate,
     IngredientOut,
     IngredientPatch,
+    ModifierCreate,
+    ModifierOut,
+    ModifierPatch,
     ProductCreate,
     ProductOut,
     RecipeItemOut,
@@ -50,7 +54,10 @@ def _require_store(db: Session, tid: UUID, store_id: UUID) -> UUID:
 
 def _to_out(db: Session, ing: Ingredient, stock: Decimal | None = None) -> IngredientOut:
     unit = db.get(Unit, ing.base_unit_id)
-    assert unit is not None
+    if unit is None:
+        raise DomainError(
+            "not_found", "Unidade de medida não encontrada.", status.HTTP_404_NOT_FOUND
+        )
     if stock is None:
         stock = stock_total(db, ing.id)
     return IngredientOut(
@@ -281,8 +288,10 @@ def _build_recipe_out(db: Session, recipe: Recipe) -> RecipeOut:
     for it in items:
         ing = db.get(Ingredient, it.ingredient_id)
         unit = db.get(Unit, it.unit_id)
-        assert ing is not None  # FK de recipe_items garante existência
-        assert unit is not None
+        if ing is None or unit is None:
+            raise DomainError(
+                "not_found", "Ingrediente ou unidade não encontrados.", status.HTTP_404_NOT_FOUND
+            )
         out_items.append(
             RecipeItemOut(
                 ingredient_id=it.ingredient_id,
@@ -331,3 +340,79 @@ def get_margin(product_id: UUID, db: Session = Depends(get_tenant_db)) -> dict: 
         "margin_value": str(value),
         "margin_percent": None if percent is None else str(percent),
     }
+
+
+def _require_product(db: Session, product_id: UUID) -> Product:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise DomainError("not_found", "Produto não encontrado.", status.HTTP_404_NOT_FOUND)
+    return product
+
+
+def _modifier_out(m: ProductModifier) -> ModifierOut:
+    return ModifierOut(
+        id=m.id,
+        group_name=m.group_name,
+        modifier_name=m.modifier_name,
+        price_delta=m.price_delta,
+        required=m.required,
+        min_selection=m.min_selection,
+        max_selection=m.max_selection,
+        active=m.active,
+    )
+
+
+@router.post("/produtos/{product_id}/adicionais", status_code=status.HTTP_201_CREATED)
+def create_modifier(
+    product_id: UUID, payload: ModifierCreate, db: Session = Depends(get_tenant_db)  # noqa: B008
+) -> ModifierOut:
+    _require_product(db, product_id)
+    m = ProductModifier(
+        tenant_id=_tenant_id(db),
+        product_id=product_id,
+        group_name=payload.group_name,
+        modifier_name=payload.modifier_name,
+        price_delta=payload.price_delta,
+        required=payload.required,
+        min_selection=payload.min_selection,
+        max_selection=payload.max_selection,
+    )
+    db.add(m)
+    db.commit()
+    return _modifier_out(m)
+
+
+@router.get("/produtos/{product_id}/adicionais")
+def list_modifiers(product_id: UUID, db: Session = Depends(get_tenant_db)) -> list[ModifierOut]:  # noqa: B008
+    _require_product(db, product_id)
+    rows = db.scalars(
+        select(ProductModifier).where(ProductModifier.product_id == product_id)
+    ).all()
+    return [_modifier_out(m) for m in rows]
+
+
+@router.patch("/produtos/{product_id}/adicionais/{modifier_id}")
+def patch_modifier(
+    product_id: UUID,
+    modifier_id: UUID,
+    payload: ModifierPatch,
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> ModifierOut:
+    _require_product(db, product_id)
+    m = db.get(ProductModifier, modifier_id)
+    if m is None or m.product_id != product_id:
+        raise DomainError("not_found", "Adicional não encontrado.", status.HTTP_404_NOT_FOUND)
+    for field in (
+        "group_name",
+        "modifier_name",
+        "price_delta",
+        "required",
+        "min_selection",
+        "max_selection",
+        "active",
+    ):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(m, field, value)
+    db.commit()
+    return _modifier_out(m)

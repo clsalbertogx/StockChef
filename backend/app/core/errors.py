@@ -32,12 +32,18 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def on_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Sanitize errors: remove non-serializable 'ctx' (e.g., ValueError objects)
+        sanitized = []
+        for e in exc.errors():
+            e = dict(e)
+            e.pop("ctx", None)
+            sanitized.append(e)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
                 "detail": "Dados inválidos.",
                 "code": "validation_error",
-                "errors": exc.errors(),
+                "errors": sanitized,
             },
         )
 

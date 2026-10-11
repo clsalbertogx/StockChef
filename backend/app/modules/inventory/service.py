@@ -11,6 +11,10 @@ from app.core.errors import DomainError
 from app.modules.catalog.models import StockLevel, StockMovement
 
 
+class InvalidReceivedQtyError(ValueError):
+    pass
+
+
 def ensure_stock_level(
     db: Session,
     *,
@@ -53,7 +57,7 @@ def weighted_average_cost(
     current_qty: Decimal, current_avg: Decimal, received_qty: Decimal, received_cost: Decimal
 ) -> Decimal:
     if received_qty <= 0:
-        raise ValueError("received_qty deve ser > 0")
+        raise InvalidReceivedQtyError("received_qty deve ser > 0")
     if current_qty <= 0:
         return received_cost.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     new_avg = (
