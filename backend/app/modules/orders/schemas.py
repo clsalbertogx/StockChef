@@ -34,6 +34,10 @@ class OrderStatusUpdate(BaseModel):
     notes: str | None = None
 
 
+class OrderCancel(BaseModel):
+    motivo: str = Field(min_length=1)
+
+
 class OrderItemOut(BaseModel):
     product_id: UUID
     product_name: str

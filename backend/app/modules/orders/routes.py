@@ -12,11 +12,14 @@ from sqlalchemy.orm import Session
 from app.core.deps import current_actor, get_tenant_db
 from app.core.errors import DomainError
 from app.core.tenant import Actor
-from app.modules.catalog.models import Product, Store
+from app.modules.catalog.models import Product, StockMovement, Store
 from app.modules.catalog.service import default_store
+from app.modules.inventory.service import apply_movement, ensure_stock_level
 from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent
 from app.modules.orders.outbox import drain_outbox
-from app.modules.orders.schemas import OrderCreate, OrderItemOut, OrderOut, OrderStatusUpdate
+from app.modules.orders.schemas import (
+    OrderCancel, OrderCreate, OrderItemOut, OrderOut, OrderStatusUpdate,
+)
 from app.modules.orders.service import availability, availability_ok, recipe_snapshot
 
 router = APIRouter(tags=["pedidos"])
@@ -29,6 +32,9 @@ TRANSITIONS: dict[tuple[str, str], frozenset[str]] = {
     ("ready", "completed"): frozenset({"cashier", "manager", "owner"}),
     ("delivered", "completed"): frozenset({"owner", "manager"}),
 }
+
+CANCELLABLE = ("received", "confirmed", "confirmed_pending_stock", "preparing", "ready")
+CANCEL_BLOCKED = ("delivered", "completed", "refunded")
 
 
 def _tenant_id(db: Session) -> UUID:
@@ -308,3 +314,62 @@ def order_events(order_id: UUID, db: Session = Depends(get_tenant_db)) -> dict: 
             for e in events
         ],
     }
+
+
+@router.post("/pedidos/{order_id}/cancelar")
+def cancel_order(
+    order_id: UUID,
+    payload: OrderCancel,
+    actor: Actor = Depends(current_actor),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> OrderOut:
+    tid = _tenant_id(db)
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if order is None:
+        raise DomainError("not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND)
+    if order.status == "cancelled":
+        return _to_out(db, order)  # idempotente
+    if order.status in CANCEL_BLOCKED or order.status not in CANCELLABLE:
+        raise DomainError(
+            "invalid_state", "Pedido não pode ser cancelado nesse estado.",
+            status.HTTP_409_CONFLICT,
+        )
+    if actor.role not in ("owner", "manager", "cashier"):
+        raise DomainError("forbidden", "Permissão insuficiente.", status.HTTP_403_FORBIDDEN)
+
+    sales = db.scalars(
+        select(StockMovement).where(
+            StockMovement.reference_type == "order",
+            StockMovement.reference_id == order.id,
+            StockMovement.type == "sale",
+        )
+    ).all()
+    for mov in sales:
+        ensure_stock_level(
+            db, tenant_id=tid, store_id=order.store_id, ingredient_id=mov.ingredient_id
+        )
+        apply_movement(
+            db,
+            tenant_id=tid,
+            store_id=order.store_id,
+            ingredient_id=mov.ingredient_id,
+            type_="reversal",
+            quantity=abs(mov.quantity),
+            unit_cost=mov.unit_cost,
+            reference_type="order",
+            reference_id=order.id,
+            reason="Cancelamento de pedido",
+            idempotency_key=f"order.reversed:{order.id}:{mov.ingredient_id}",
+            user_id=actor.id,
+        )
+
+    old = order.status
+    order.status = "cancelled"
+    order.updated_at = datetime.now(UTC)
+    db.add(OrderEvent(tenant_id=tid, order_id=order.id, event_type="status.changed",
+                      from_status=old, to_status="cancelled", user_id=actor.id))
+    db.add(OrderEvent(tenant_id=tid, order_id=order.id, event_type="order.cancelled",
+                      from_status=old, to_status="cancelled", user_id=actor.id,
+                      payload={"motivo": payload.motivo}))
+    db.commit()
+    return _to_out(db, order)
