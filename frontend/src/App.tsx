@@ -16,6 +16,8 @@ import PedidosPage from "./pages/PedidosPage";
 import ProdutosPage from "./pages/ProdutosPage";
 import CardapioPage from "./pages/public/CardapioPage";
 import CarrinhoPage from "./pages/public/CarrinhoPage";
+import CheckoutPage from "./pages/public/CheckoutPage";
+import PedidoPublicoPage from "./pages/public/PedidoPublicoPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -138,6 +140,22 @@ export default function App() {
             element={
               <CartProvider>
                 <CarrinhoPage />
+              </CartProvider>
+            }
+          />
+          <Route
+            path="/cardapio/:slug/checkout"
+            element={
+              <CartProvider>
+                <CheckoutPage />
+              </CartProvider>
+            }
+          />
+          <Route
+            path="/cardapio/:slug/pedido/:code"
+            element={
+              <CartProvider>
+                <PedidoPublicoPage />
               </CartProvider>
             }
           />
