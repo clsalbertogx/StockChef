@@ -187,3 +187,20 @@ class RecipeItem(Base):
     optional: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ProductModifier(Base):
+    __tablename__ = "product_modifiers"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(nullable=False)
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"), nullable=False)
+    group_name: Mapped[str] = mapped_column(String)
+    modifier_name: Mapped[str] = mapped_column(String)
+    price_delta: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    required: Mapped[bool] = mapped_column(default=False)
+    min_selection: Mapped[int] = mapped_column(default=0)
+    max_selection: Mapped[int | None] = mapped_column(default=None)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
