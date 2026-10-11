@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,16 +9,26 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_tenant_db
+from app.core.deps import current_actor, get_tenant_db
 from app.core.errors import DomainError
+from app.core.tenant import Actor
 from app.modules.catalog.models import Product, Store
 from app.modules.catalog.service import default_store
 from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent
 from app.modules.orders.outbox import drain_outbox
-from app.modules.orders.schemas import OrderCreate, OrderItemOut, OrderOut
+from app.modules.orders.schemas import OrderCreate, OrderItemOut, OrderOut, OrderStatusUpdate
 from app.modules.orders.service import availability, availability_ok, recipe_snapshot
 
 router = APIRouter(tags=["pedidos"])
+
+TRANSITIONS: dict[tuple[str, str], frozenset[str]] = {
+    ("confirmed", "preparing"): frozenset({"kitchen", "manager", "owner"}),
+    ("confirmed_pending_stock", "preparing"): frozenset({"kitchen", "manager", "owner"}),
+    ("preparing", "ready"): frozenset({"kitchen", "manager", "owner"}),
+    ("ready", "delivered"): frozenset({"cashier", "manager", "owner"}),
+    ("ready", "completed"): frozenset({"cashier", "manager", "owner"}),
+    ("delivered", "completed"): frozenset({"owner", "manager"}),
+}
 
 
 def _tenant_id(db: Session) -> UUID:
@@ -232,6 +243,44 @@ def confirm_order(
     )
     db.commit()
     background_tasks.add_task(drain_outbox, tid)
+    return _to_out(db, order)
+
+
+@router.patch("/pedidos/{order_id}/status")
+def update_order_status(
+    order_id: UUID,
+    payload: OrderStatusUpdate,
+    actor: Actor = Depends(current_actor),  # noqa: B008
+    db: Session = Depends(get_tenant_db),  # noqa: B008
+) -> OrderOut:
+    tid = _tenant_id(db)
+    order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if order is None:
+        raise DomainError("not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND)
+    if payload.status == order.status:
+        return _to_out(db, order)  # no-op idempotente
+    roles = TRANSITIONS.get((order.status, payload.status))
+    if roles is None:
+        raise DomainError(
+            "invalid_state", "Transição de status inválida.", status.HTTP_409_CONFLICT
+        )
+    if actor.role not in roles:
+        raise DomainError("forbidden", "Permissão insuficiente.", status.HTTP_403_FORBIDDEN)
+    old = order.status
+    order.status = payload.status
+    order.updated_at = datetime.now(UTC)
+    db.add(
+        OrderEvent(
+            tenant_id=tid,
+            order_id=order.id,
+            event_type="status.changed",
+            from_status=old,
+            to_status=payload.status,
+            user_id=actor.id,
+            payload={"notes": payload.notes} if payload.notes else {},
+        )
+    )
+    db.commit()
     return _to_out(db, order)
 
 

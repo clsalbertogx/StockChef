@@ -23,6 +23,17 @@ class OrderCreate(BaseModel):
     channel: Literal["own_pwa", "whatsapp", "phone", "pos", "marketplace_future"] = "own_pwa"
 
 
+OrderStatus = Literal[
+    "received", "confirmed", "confirmed_pending_stock", "preparing", "ready",
+    "out_for_delivery", "delivered", "completed", "cancelled", "refunded",
+]
+
+
+class OrderStatusUpdate(BaseModel):
+    status: OrderStatus
+    notes: str | None = None
+
+
 class OrderItemOut(BaseModel):
     product_id: UUID
     product_name: str
