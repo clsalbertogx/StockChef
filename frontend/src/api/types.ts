@@ -71,6 +71,36 @@ export interface Evento {
   outbox_status?: string | null;
 }
 
+export interface Supplier {
+  id: string;
+  name: string;
+  lead_time_days: number;
+  active: boolean;
+}
+
+export interface LossIn {
+  ingredient_id: string;
+  quantity: string;
+  reason: string;
+}
+
+export interface CriticalStockItem {
+  ingredient_id: string;
+  name: string;
+  unit_symbol: string;
+  stock_total: string;
+  minimum_stock: string;
+}
+
+export interface MovementOut {
+  id: string;
+  ingredient_id: string;
+  type: string;
+  quantity: string;
+  reason?: string | null;
+  created_at: string;
+}
+
 export const STATUS_LABEL: Record<string, string> = {
   received: "Recebido",
   confirmed: "Confirmado",

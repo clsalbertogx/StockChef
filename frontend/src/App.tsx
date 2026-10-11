@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import DashboardPage from "./pages/DashboardPage";
+import EstoquePage from "./pages/EstoquePage";
+import FornecedoresPage from "./pages/FornecedoresPage";
 import InsumosPage from "./pages/InsumosPage";
 import LoginPage from "./pages/LoginPage";
 import PedidoDetalhePage from "./pages/PedidoDetalhePage";
@@ -40,6 +42,22 @@ export default function App() {
             element={
               <Protected>
                 <ProdutosPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/estoque"
+            element={
+              <Protected>
+                <EstoquePage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/fornecedores"
+            element={
+              <Protected>
+                <FornecedoresPage />
               </Protected>
             }
           />
