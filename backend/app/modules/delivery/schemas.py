@@ -11,6 +11,10 @@ def _norm(cep: str) -> str:
     return re.sub(r"\D", "", cep)
 
 
+class CepRangeValidationError(ValueError):
+    pass
+
+
 class CepRange(BaseModel):
     start: str
     end: str
@@ -20,9 +24,9 @@ class CepRange(BaseModel):
         s = _norm(self.start)
         e = _norm(self.end)
         if len(s) != 8 or len(e) != 8:
-            raise ValueError("CEP deve ter 8 dígitos")
+            raise CepRangeValidationError("CEP deve ter 8 dígitos")
         if s > e:
-            raise ValueError("start não pode ser maior que end")
+            raise CepRangeValidationError("start não pode ser maior que end")
         self.start = s
         self.end = e
         return self

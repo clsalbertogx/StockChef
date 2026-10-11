@@ -54,7 +54,10 @@ def _require_store(db: Session, tid: UUID, store_id: UUID) -> UUID:
 
 def _to_out(db: Session, ing: Ingredient, stock: Decimal | None = None) -> IngredientOut:
     unit = db.get(Unit, ing.base_unit_id)
-    assert unit is not None
+    if unit is None:
+        raise DomainError(
+            "not_found", "Unidade de medida não encontrada.", status.HTTP_404_NOT_FOUND
+        )
     if stock is None:
         stock = stock_total(db, ing.id)
     return IngredientOut(
@@ -285,8 +288,10 @@ def _build_recipe_out(db: Session, recipe: Recipe) -> RecipeOut:
     for it in items:
         ing = db.get(Ingredient, it.ingredient_id)
         unit = db.get(Unit, it.unit_id)
-        assert ing is not None  # FK de recipe_items garante existência
-        assert unit is not None
+        if ing is None or unit is None:
+            raise DomainError(
+                "not_found", "Ingrediente ou unidade não encontrados.", status.HTTP_404_NOT_FOUND
+            )
         out_items.append(
             RecipeItemOut(
                 ingredient_id=it.ingredient_id,
