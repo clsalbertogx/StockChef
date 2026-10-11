@@ -19,11 +19,9 @@ describe("LoginPage", () => {
   });
 
   it("faz login via fluxo email-first e guarda o token", async () => {
-    let fetchCall = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: RequestInfo | URL) => {
-        fetchCall++;
         const u = String(url);
         if (u.includes("/api/v1/auth/tenants-by-email")) {
           return jsonResponse({
