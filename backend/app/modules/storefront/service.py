@@ -23,6 +23,7 @@ from app.modules.storefront.schemas import (
     ModifierOut,
     PublicCategoryOut,
     PublicMenuOut,
+    PublicOrderConfirm,
     PublicOrderCreate,
     PublicOrderItemOut,
     PublicOrderOut,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, status
@@ -279,6 +279,12 @@ def confirm_order(
             tenant_id=tid, order_id=order.id, provider="cash", method="cash", amount=order.total,
             status="pending", idempotency_key=f"order.payment:{order.id}",
         ))
+    # Auto-cria entrega se for do tipo delivery
+    if order.fulfillment_type == "delivery":
+        from app.modules.delivery.service import create_delivery
+        create_delivery(
+            db, tid, order.id, driver_id=None, eta_minutes=None, route_hint={},
+        )
     db.commit()
     background_tasks.add_task(drain_outbox, tid)
     return _to_out(db, order)
