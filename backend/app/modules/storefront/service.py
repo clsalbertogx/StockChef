@@ -17,7 +17,7 @@ from app.modules.catalog.service import default_store
 from app.modules.delivery.models import Zone
 from app.modules.delivery.service import resolve_zone
 from app.modules.identity.models import Tenant
-from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, Payment
+from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent, Payment
 from app.modules.orders.service import availability, recipe_snapshot
 from app.modules.storefront.schemas import (
     ModifierOut,
@@ -293,11 +293,70 @@ def create_public_order(
         tenant_id=tid, order_id=order.id, event_type="order.created",
         from_status=None, to_status="received",
     ))
+    db.add(OrderEvent(
+        tenant_id=tid, order_id=order.id, event_type="order.confirmed",
+        from_status="received", to_status="received",
+    ))
+    db.add(OutboxEvent(
+        tenant_id=tid,
+        event_type="order.confirmed",
+        payload={"order_id": str(order.id)},
+        idempotency_key=f"order.confirmed:{order.id}",
+    ))
     db.add(Payment(
         tenant_id=tid, order_id=order.id, provider="cash", method="cash", amount=total,
         status="pending", idempotency_key=f"order.public:{payload.idempotency_key}",
     ))
     db.commit()
+    # Dispara baixa de estoque via outbox (síncrono para garantir consistência)
+    from app.modules.orders.outbox import drain_outbox
+    drain_outbox(tid)
+    return order
+
+
+def confirm_public_order(
+    db: Session, tenant: Tenant, store: Store, payload: PublicOrderConfirm
+) -> Order:
+    """Confirma um pedido público (para pedidos agendados ou confirmação manual)."""
+    existing = db.scalar(
+        select(Payment).where(
+            Payment.idempotency_key == f"order.public:{payload.idempotency_key}"
+        )
+    )
+    if existing is None:
+        raise DomainError(
+            "not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND
+        )
+    order = db.get(Order, existing.order_id)
+    if order is None:
+        raise DomainError(
+            "not_found", "Pedido não encontrado.", status.HTTP_404_NOT_FOUND
+        )
+    if order.status not in ("received", "confirmed_pending_stock"):
+        raise DomainError(
+            "invalid_state", "Pedido não pode ser confirmado nesse estado.",
+            status.HTTP_409_CONFLICT,
+        )
+    # Re-valida disponibilidade de estoque
+    from app.modules.orders.service import availability_ok
+    items = db.scalars(select(OrderItem).where(OrderItem.order_id == order.id)).all()
+    if not availability_ok(db, store.id, [(i.product_id, i.quantity) for i in items]):
+        order.status = "confirmed_pending_stock"
+    else:
+        order.status = "confirmed"
+    db.add(OrderEvent(
+        tenant_id=tenant.id, order_id=order.id, event_type="status.changed",
+        from_status="received", to_status=order.status,
+    ))
+    db.add(OutboxEvent(
+        tenant_id=tenant.id,
+        event_type="order.confirmed",
+        payload={"order_id": str(order.id)},
+        idempotency_key=f"order.confirmed:{order.id}",
+    ))
+    db.commit()
+    from app.modules.orders.outbox import drain_outbox
+    drain_outbox(order.tenant_id)
     return order
 
 

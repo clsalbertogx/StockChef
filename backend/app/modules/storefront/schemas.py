@@ -99,3 +99,7 @@ class PublicOrderOut(BaseModel):
     eta_minutes: int | None
     created_at: datetime
     items: list[PublicOrderItemOut]
+
+
+class PublicOrderConfirm(BaseModel):
+    idempotency_key: str = Field(min_length=8, max_length=64)

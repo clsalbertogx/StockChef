@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 class OrderItemRequest(BaseModel):
     product_id: UUID
     quantity: int = Field(ge=1)
+    notes: str | None = None
+    modifier_ids: list[UUID] = []
 
 
 class OrderCreate(BaseModel):
@@ -21,6 +23,7 @@ class OrderCreate(BaseModel):
     notes: str | None = None
     fulfillment_type: Literal["delivery", "pickup", "table"] = "delivery"
     channel: Literal["own_pwa", "whatsapp", "phone", "pos", "marketplace_future"] = "own_pwa"
+    scheduled_time: datetime | None = None
 
 
 OrderStatus = Literal[

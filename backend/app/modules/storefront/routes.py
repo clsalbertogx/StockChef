@@ -19,9 +19,11 @@ from app.modules.storefront.schemas import (
     PublicMenuOut,
     PublicOrderCreate,
     PublicOrderOut,
+    PublicOrderConfirm,
 )
 from app.modules.storefront.service import (
     create_public_order,
+    confirm_public_order,
     current_store,
     public_menu,
     public_order_out,
@@ -94,6 +96,18 @@ def create_pedido(
     assert tenant is not None
     store = current_store(db, tid)
     order = create_public_order(db, tenant, store, payload)
+    return public_order_out(db, order)
+
+
+@router.post("/public/{slug}/pedidos/confirmar", status_code=status.HTTP_200_OK)
+def confirm_pedido(
+    slug: str, payload: PublicOrderConfirm, db: Session = Depends(get_public_db)  # noqa: B008
+) -> PublicOrderOut:
+    tid = db.info["tenant_id"]
+    tenant = db.get(Tenant, tid)
+    assert tenant is not None
+    store = current_store(db, tid)
+    order = confirm_public_order(db, tenant, store, payload)
     return public_order_out(db, order)
 
 

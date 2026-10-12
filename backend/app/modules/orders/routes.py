@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, status
@@ -15,7 +15,7 @@ from app.core.tenant import Actor
 from app.modules.catalog.models import Product, StockMovement, Store
 from app.modules.catalog.service import default_store
 from app.modules.inventory.service import apply_movement, ensure_stock_level
-from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent
+from app.modules.orders.models import Customer, Order, OrderEvent, OrderItem, OutboxEvent, Payment
 from app.modules.orders.outbox import drain_outbox
 from app.modules.orders.schemas import (
     KitchenItemOut,
@@ -27,6 +27,7 @@ from app.modules.orders.schemas import (
     OrderStatusUpdate,
 )
 from app.modules.orders.service import availability, availability_ok, recipe_snapshot
+from app.modules.storefront.service import _resolve_modifiers
 
 router = APIRouter(tags=["pedidos"])
 
@@ -153,6 +154,7 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_tenant_db)) -> 
         channel=payload.channel,
         fulfillment_type=payload.fulfillment_type,
         notes=payload.notes,
+        expected_time=payload.scheduled_time,
     )
     db.add(order)
     db.flush()
@@ -164,17 +166,32 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_tenant_db)) -> 
             raise DomainError(
                 "not_found", "Produto não encontrado.", status.HTTP_404_NOT_FOUND
             )
-        unit_price = product.price
-        total_price = unit_price * it.quantity
-        subtotal += total_price
+        # Resolve modificadores
+        chosen, delta = _resolve_modifiers(db, product, it.modifier_ids)
+        unit = (product.price + delta).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        line = (unit * it.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        subtotal += line
         db.add(
             OrderItem(
                 tenant_id=tid,
                 order_id=order.id,
                 product_id=it.product_id,
                 quantity=it.quantity,
-                unit_price=unit_price,
-                total_price=total_price,
+                unit_price=unit,
+                total_price=line,
+                notes=it.notes,
+                modifiers=[
+                    {
+                        "product_modifier_id": str(m.id),
+                        "group_name": m.group_name,
+                        "name": m.modifier_name,
+                        "price_delta": str(m.price_delta),
+                        "quantity": 1,
+                        "id": str(m.id),
+                        "modifier_name": m.modifier_name,
+                    }
+                    for m in chosen
+                ],
                 recipe_snapshot=recipe_snapshot(db, it.product_id),
             )
         )
@@ -253,6 +270,15 @@ def confirm_order(
             idempotency_key=f"order.confirmed:{order.id}",
         )
     )
+    # Cria pagamento (cash on delivery por padrão) — idempotente
+    existing_payment = db.scalar(
+        select(Payment).where(Payment.order_id == order.id)
+    )
+    if existing_payment is None:
+        db.add(Payment(
+            tenant_id=tid, order_id=order.id, provider="cash", method="cash", amount=order.total,
+            status="pending", idempotency_key=f"order.payment:{order.id}",
+        ))
     db.commit()
     background_tasks.add_task(drain_outbox, tid)
     return _to_out(db, order)
